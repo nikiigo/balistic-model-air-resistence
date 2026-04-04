@@ -411,6 +411,7 @@ HTML_PAGE = """<!DOCTYPE html>
     input[type="range"] {
       width: 100%;
       accent-color: var(--accent);
+      touch-action: pan-x;
     }
 
     input[type="number"] {
@@ -824,14 +825,42 @@ HTML_PAGE = """<!DOCTYPE html>
         grid-template-columns: 1fr;
       }
 
-      .canvas-wrap,
+      .hero h1 {
+        font-size: 1.8rem;
+      }
+
+      .stat {
+        font-size: 0.74rem;
+      }
+
+      .stat strong {
+        font-size: 0.8rem;
+      }
+
+      .canvas-wrap {
+        min-height: 0;
+        height: auto;
+        padding-top: 210px;
+      }
+
       canvas {
-        min-height: 320px;
-        height: 320px;
+        min-height: 300px;
+        height: 300px;
       }
 
       .gun-library {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
         gap: 10px;
+        padding-bottom: 6px;
+        padding-right: 0;
+      }
+
+      .gun-card {
+        min-height: 150px;
+        flex: 0 0 180px;
       }
 
       .gun-hover {
@@ -841,16 +870,43 @@ HTML_PAGE = """<!DOCTYPE html>
 
       .control-pop {
         top: 10px;
+        left: 10px;
         right: 10px;
-        width: calc(100% - 20px);
+        width: auto;
         padding: 10px;
-        max-height: calc(100% - 20px);
+        max-height: 190px;
+      }
+
+      .control-panel-head h3 {
+        font-size: 0.8rem;
+      }
+
+      .control-scroll {
+        gap: 10px;
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .material-presets {
+        gap: 8px;
+      }
+
+      .material-chip {
+        min-width: 34px;
+        min-height: 34px;
+        padding: 0;
       }
 
       .legend {
         left: 10px;
         right: 10px;
-        top: 10px;
+        top: 220px;
+        font-size: 0.72rem;
+        gap: 8px;
+        padding: 6px 0;
       }
     }
   </style>
@@ -1374,6 +1430,7 @@ HTML_PAGE = """<!DOCTYPE html>
           hideGunHover();
         });
         card.addEventListener("click", () => {
+          showGunHover(card.dataset.gun);
           setGunMode(card.dataset.gun);
           launch();
         });
