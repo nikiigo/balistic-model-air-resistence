@@ -83,17 +83,43 @@ def sphere_volume_from_diameter(diameter: float) -> float:
     return math.pi * diameter**3 / 6.0
 
 
-def mass_from_material_density(material_density: float, diameter: float) -> float:
+def projectile_volume_from_diameter(diameter: float, volume_factor: float = 1.0) -> float:
+    if volume_factor <= 0:
+        return 0.0
+    return sphere_volume_from_diameter(diameter) * volume_factor
+
+
+def mass_from_material_density(material_density: float, diameter: float, volume_factor: float = 1.0) -> float:
     if material_density <= 0:
         return 0.0
-    return material_density * sphere_volume_from_diameter(diameter)
+    return material_density * projectile_volume_from_diameter(diameter, volume_factor)
 
 
-def material_density_from_mass_and_diameter(mass: float, diameter: float) -> float:
-    volume = sphere_volume_from_diameter(diameter)
+def material_density_from_mass_and_diameter(mass: float, diameter: float, volume_factor: float = 1.0) -> float:
+    volume = projectile_volume_from_diameter(diameter, volume_factor)
     if volume <= 0:
         return 0.0
     return mass / volume
+
+
+def drag_coefficient_nonspherical(reynolds: float, sphericity: float) -> float:
+    if reynolds <= 0 or sphericity <= 0 or sphericity > 1:
+        return 0.0
+    a = math.exp(2.3288 - (6.4581 * sphericity) + (2.4486 * sphericity * sphericity))
+    b = 0.0964 + (0.5565 * sphericity)
+    c = math.exp(
+        4.905
+        - (13.8944 * sphericity)
+        + (18.4222 * sphericity * sphericity)
+        - (10.2599 * sphericity * sphericity * sphericity)
+    )
+    d = math.exp(
+        1.4681
+        + (12.2584 * sphericity)
+        - (20.7322 * sphericity * sphericity)
+        + (15.8855 * sphericity * sphericity * sphericity)
+    )
+    return (24.0 / reynolds) * (1.0 + (a * (reynolds**b))) + (c / (1.0 + (d / reynolds)))
 
 
 def aerodynamic_state(
@@ -101,12 +127,17 @@ def aerodynamic_state(
     temperature_c: float,
     pressure_atm: float,
     diameter: float,
+    projectile_shape: str = "sphere",
+    sphericity: float = 1.0,
 ) -> Dict[str, float]:
     density = air_density_from_conditions(temperature_c, pressure_atm)
     viscosity = dynamic_viscosity_air(temperature_c)
     area = sphere_area_from_diameter(diameter)
     reynolds = reynolds_number(density, speed, diameter, viscosity)
-    drag_coefficient = drag_coefficient_sphere(reynolds)
+    if projectile_shape == "shell":
+        drag_coefficient = drag_coefficient_nonspherical(reynolds, sphericity)
+    else:
+        drag_coefficient = drag_coefficient_sphere(reynolds)
     drag_force = 0.5 * density * drag_coefficient * area * speed * speed
     return {
         "air_density": density,
@@ -115,6 +146,8 @@ def aerodynamic_state(
         "reynolds": reynolds,
         "drag_coefficient": drag_coefficient,
         "drag_force": drag_force,
+        "projectile_shape": projectile_shape,
+        "sphericity": sphericity,
     }
 
 
@@ -125,12 +158,17 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000, it
     vx = params["speed"] * math.cos(theta)
     vy = params["speed"] * math.sin(theta)
     dt = params["dt"]
-    projectile_mass = mass_from_material_density(params["materialDensity"], params["diameter"])
+    projectile_shape = params.get("projectileShape", "sphere")
+    sphericity = params.get("sphericity", 1.0)
+    volume_factor = params.get("volumeFactor", 1.0)
+    projectile_mass = mass_from_material_density(params["materialDensity"], params["diameter"], volume_factor)
     aero = aerodynamic_state(
         math.hypot(vx, vy),
         params["temperature"],
         params["pressure"],
         params["diameter"],
+        projectile_shape=projectile_shape,
+        sphericity=sphericity,
     )
     points = [{"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero}]
     t = 0.0
@@ -149,6 +187,8 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000, it
                 params["temperature"],
                 params["pressure"],
                 params["diameter"],
+                projectile_shape=projectile_shape,
+                sphericity=sphericity,
             )
             drag_accel_scale = 0.0 if speed == 0.0 or projectile_mass <= 0.0 else iter_aero["drag_force"] / (projectile_mass * speed)
             ax = -drag_accel_scale * iter_vx
@@ -165,6 +205,8 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000, it
             params["temperature"],
             params["pressure"],
             params["diameter"],
+            projectile_shape=projectile_shape,
+            sphericity=sphericity,
         )
         x += vx * dt
         y += vy * dt
@@ -191,6 +233,8 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000, it
                 },
                 "aero": {
                     "projectile_mass": projectile_mass,
+                    "projectile_shape": projectile_shape,
+                    "sphericity": sphericity,
                     "air_density": aero["air_density"],
                     "viscosity": aero["viscosity"],
                     "area": aero["area"],
@@ -216,6 +260,8 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000, it
         },
         "aero": {
             "projectile_mass": projectile_mass,
+            "projectile_shape": projectile_shape,
+            "sphericity": sphericity,
             "air_density": aero["air_density"],
             "viscosity": aero["viscosity"],
             "area": aero["area"],
@@ -339,7 +385,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .stat-strip {
       display: grid;
       gap: clamp(8px, 0.9vw, 12px);
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 
     .stat {
@@ -354,6 +400,31 @@ HTML_PAGE = """<!DOCTYPE html>
       display: block;
       font-size: 0.82rem;
       margin-top: 2px;
+    }
+
+    .scale-stat {
+      display: grid;
+      gap: 6px;
+    }
+
+    .scale-toggle {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .scale-toggle button {
+      padding: 5px 9px;
+      font-size: 0.74rem;
+      background: rgba(255,255,255,0.75);
+      color: var(--ink);
+      border: 1px solid var(--border);
+    }
+
+    .scale-toggle button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
     }
 
     .guns {
@@ -387,6 +458,7 @@ HTML_PAGE = """<!DOCTYPE html>
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: clamp(8px, 0.8vw, 10px);
+      align-items: start;
     }
 
     label {
@@ -394,6 +466,7 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: clamp(4px, 0.45vw, 5px);
       font-size: 0.82rem;
       font-weight: 700;
+      align-content: start;
     }
 
     .control-header {
@@ -441,6 +514,41 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .material-chip {
       padding: 4px 7px;
+      font-size: 0.72rem;
+      line-height: 1;
+    }
+
+    .shape-toggle {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(6px, 0.7vw, 8px);
+      margin-top: 4px;
+    }
+
+    .shape-card {
+      border-radius: 14px;
+      padding: 8px 6px 7px;
+      background: rgba(255,255,255,0.78);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+    }
+
+    .shape-card.active {
+      background: rgba(182, 70, 42, 0.12);
+      border-color: rgba(182, 70, 42, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(182, 70, 42, 0.18);
+    }
+
+    .shape-icon {
+      width: 100%;
+      height: 36px;
+      display: block;
+    }
+
+    .shape-card span {
       font-size: 0.72rem;
       line-height: 1;
     }
@@ -928,8 +1036,23 @@ HTML_PAGE = """<!DOCTYPE html>
           <strong id="hero-speed">55.0 m/s</strong>
         </div>
         <div class="stat">
-          Mode
-          <strong id="hero-mode">Compare</strong>
+          Ideal V
+          <strong id="hero-ideal-speed">55.0 m/s</strong>
+        </div>
+        <div class="stat">
+          Drag V
+          <strong id="hero-drag-speed">55.0 m/s</strong>
+        </div>
+        <div class="stat">
+          Preset
+          <strong id="hero-mode">Manual setup</strong>
+        </div>
+        <div class="stat scale-stat">
+          Scale
+          <div class="scale-toggle">
+            <button type="button" class="active" id="scaleStableBtn">Stable</button>
+            <button type="button" id="scaleFitBtn">Fit shot</button>
+          </div>
         </div>
       </div>
     </section>
@@ -993,11 +1116,29 @@ HTML_PAGE = """<!DOCTYPE html>
             </label>
             <label>
               <span class="control-header"><span>Air pressure</span><span class="value" data-out="pressure">1.00 atm</span></span>
-              <input id="pressure" type="range" min="0.2" max="1.2" step="0.01" value="1">
+              <input id="pressure" type="range" min="0" max="1.2" step="0.01" value="1">
             </label>
             <label>
               <span class="control-header"><span>Projectile diameter</span><span class="value" data-out="diameter">0.113 m</span></span>
               <input id="diameter" type="range" min="0.01" max="0.30" step="0.001" value="0.113">
+            </label>
+            <label>
+              <div class="shape-toggle">
+                <button type="button" class="shape-card active" id="shapeSphereBtn" aria-label="Round shot">
+                  <svg class="shape-icon" viewBox="0 0 72 36" aria-hidden="true">
+                    <circle cx="36" cy="18" r="11" fill="rgba(31,31,26,0.78)"/>
+                    <ellipse cx="31" cy="14" rx="4.2" ry="2.8" fill="rgba(255,255,255,0.28)"/>
+                  </svg>
+                  <span>Round shot</span>
+                </button>
+                <button type="button" class="shape-card" id="shapeShellBtn" aria-label="Shell">
+                  <svg class="shape-icon" viewBox="0 0 72 36" aria-hidden="true">
+                    <path d="M18 25 L27 13 Q36 6 45 13 L54 25 Q36 30 18 25 Z" fill="rgba(31,31,26,0.78)"/>
+                    <path d="M28 12 L36 8 L44 12" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  <span>Shell</span>
+                </button>
+              </div>
             </label>
             <label>
               <span class="control-header"><span>Time step</span><span class="value" data-out="dt">0.016 s</span></span>
@@ -1059,19 +1200,26 @@ HTML_PAGE = """<!DOCTYPE html>
       return Math.PI * diameter ** 3 / 6;
     }
 
-    function materialDensityFromMassAndDiameter(mass, diameter) {
-      const volume = sphereVolumeFromDiameter(diameter);
+    function projectileVolumeFromDiameter(diameter, volumeFactor = 1) {
+      if (volumeFactor <= 0) {
+        return 0;
+      }
+      return sphereVolumeFromDiameter(diameter) * volumeFactor;
+    }
+
+    function materialDensityFromMassAndDiameter(mass, diameter, volumeFactor = 1) {
+      const volume = projectileVolumeFromDiameter(diameter, volumeFactor);
       if (volume <= 0) {
         return 0;
       }
       return mass / volume;
     }
 
-    function massFromMaterialDensity(materialDensity, diameter) {
+    function massFromMaterialDensity(materialDensity, diameter, volumeFactor = 1) {
       if (materialDensity <= 0) {
         return 0;
       }
-      return materialDensity * sphereVolumeFromDiameter(diameter);
+      return materialDensity * projectileVolumeFromDiameter(diameter, volumeFactor);
     }
 
     const defaults = {
@@ -1081,7 +1229,10 @@ HTML_PAGE = """<!DOCTYPE html>
       temperature: 15,
       pressure: 1,
       diameter: 0.113,
-      dt: 0.016
+      dt: 0.016,
+      projectileShape: "sphere",
+      sphericity: 1,
+      volumeFactor: 1
     };
 
     const presets = {
@@ -1128,6 +1279,11 @@ HTML_PAGE = """<!DOCTYPE html>
       diameter: document.getElementById("diameter"),
       dt: document.getElementById("dt")
     };
+    const shapeSphereBtn = document.getElementById("shapeSphereBtn");
+    const shapeShellBtn = document.getElementById("shapeShellBtn");
+    const defaultMaterialDensityMax = Number(controls.materialDensity.max);
+    const CUSTOM_SHELL_SPHERICITY = 0.68;
+    const CUSTOM_SHELL_VOLUME_FACTOR = 2.2;
 
     const historicalGuns = {
       basilisk: {
@@ -1149,18 +1305,18 @@ HTML_PAGE = """<!DOCTYPE html>
         ]
       },
       culverin: {
-        name: "Culverin",
+        name: "Culverin extraordinary",
         subtitle: "France / England, 16th century",
         image: "/assets/guns/korean-culverin.jpg",
         imageAlt: "Korean culverin",
         imagePosition: "center center",
         diameterLabel: "140 mm",
-        projectile: "17 lb shot (7.71 kg)",
+        projectile: "20 lb shot (9.07 kg)",
         muzzleVelocity: "408 m/s",
         range: "Over 450 m at low elevation",
         service: "Renaissance field and siege artillery",
-        note: "The speed figure comes from tests of a modern replica of an extraordinary culverin. Shot weight varied by pattern, so this preset uses a mid-range historical ball mass.",
-        params: { angle: 9, speed: 408, materialDensity: materialDensityFromMassAndDiameter(7.71, 0.140), temperature: 15, pressure: 1, diameter: 0.140, dt: 0.012 },
+        note: "This preset follows the extraordinary culverin class, matching the reported modern-replica velocity with a heavier 20-pound shot rather than the lighter ordinary culverin ball.",
+        params: { angle: 9, speed: 408, materialDensity: materialDensityFromMassAndDiameter(9.07, 0.140), temperature: 15, pressure: 1, diameter: 0.140, dt: 0.012 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Korean_culverin.jpg" }
@@ -1285,8 +1441,8 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "370 m/s",
         range: "1,673 m at 5°",
         service: "American Civil War",
-        note: "This preset represents a rifled shell rather than a smooth round shot. The simulator still uses the spherical Reynolds-based drag model, so it should be read as an educational approximation.",
-        params: { angle: 10, speed: 370, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.076), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01 },
+        note: "This preset represents a rifled shell rather than a smooth round shot. It uses the simulator's nonspherical shell drag model with a simplified shell-form approximation.",
+        params: { angle: 10, speed: 370, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.076, 2.4), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.66, volumeFactor: 2.4 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/3-inch_ordnance_rifle" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:CW_Arty_3in_Ordnance_front.jpg" }
@@ -1303,11 +1459,65 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "378 m/s",
         range: "3,109 m",
         service: "Second Opium War, New Zealand Wars",
-        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight, but the simulation still applies the spherical Reynolds-based drag model as a simplified approximation.",
-        params: { angle: 8, speed: 378, materialDensity: materialDensityFromMassAndDiameter(5.1, 0.076), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01 },
+        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight with the simulator's nonspherical shell drag model.",
+        params: { angle: 8, speed: 378, materialDensity: materialDensityFromMassAndDiameter(5.1, 0.076, 2.85), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.64, volumeFactor: 2.85 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/RBL_12-pounder_8_cwt_Armstrong_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:AWM-Armstrong-gun-1.jpg" }
+        ]
+      },
+      parrott: {
+        name: "10-pounder Parrott rifle",
+        subtitle: "United States, 1861",
+        image: "/assets/guns/10-pounder-parrott-rifle-chickamauga.jpg",
+        imageAlt: "10-pounder Parrott rifle at Chickamauga Battlefield Visitors Center",
+        imagePosition: "center center",
+        diameterLabel: "74 mm",
+        projectile: "9.5 lb shell (4.30 kg)",
+        muzzleVelocity: "375 m/s",
+        range: "1,692 m at 5°",
+        service: "American Civil War field artillery",
+        note: "This preset follows the documented 2.9-inch Parrott rifle figures and uses the simulator's nonspherical shell drag model for its elongated projectile.",
+        params: { angle: 5, speed: 375, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.074, 2.6), temperature: 15, pressure: 1, diameter: 0.074, dt: 0.01, projectileShape: "shell", sphericity: 0.65, volumeFactor: 2.6 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/10-pounder_Parrott_rifle" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:10_Pounder_Parrott_Rifle,_Chickamauga_Battlefield_Visitors_Center.jpg" }
+        ]
+      },
+      longGun24: {
+        name: "24-pounder long gun",
+        subtitle: "France / Britain / United States, 18th to 19th century",
+        image: "/assets/guns/24-pounder-long-gun-isla-mancera.jpg",
+        imageAlt: "24-pounder long gun on Isla Mancera, Chile",
+        imagePosition: "center center",
+        diameterLabel: "152.2 mm",
+        projectile: "24 lb shot (10.89 kg)",
+        muzzleVelocity: "Modeled 450 m/s",
+        range: "Naval long-range battery class",
+        service: "Age-of-Sail naval artillery",
+        note: "The source identifies the gun class, caliber, and shot weight, but muzzle velocity varied by navy, barrel pattern, and powder charge. This preset uses a representative modeled launch speed for a heavy long gun rather than one universal historical firing table.",
+        params: { angle: 6, speed: 450, materialDensity: materialDensityFromMassAndDiameter(10.89, 0.1522), temperature: 15, pressure: 1, diameter: 0.1522, dt: 0.012 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/24-pounder_long_gun" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Ca%C3%B1%C3%B3n_de_a_24_libras_en_Isla_Mancera,_Chile.jpg" }
+        ]
+      },
+      paixhans: {
+        name: "Paixhans gun",
+        subtitle: "France, 1823",
+        image: "/assets/guns/paixhans-shell-gun.jpg",
+        imageAlt: "Paixhans shell gun on display at Le Port, Reunion",
+        imagePosition: "center center",
+        diameterLabel: "220 mm",
+        projectile: "30 kg shell",
+        muzzleVelocity: "400 m/s",
+        range: "Shell-gun naval artillery",
+        service: "Explosive-shell naval warfare",
+        note: "The Paixhans gun was designed for explosive shells fired on a flatter trajectory than older shell artillery. This preset uses the simulator's nonspherical shell drag model with an effective shell-density approximation.",
+        params: { angle: 5, speed: 400, materialDensity: materialDensityFromMassAndDiameter(30, 0.22, 1.35), temperature: 15, pressure: 1, diameter: 0.22, dt: 0.01, projectileShape: "shell", sphericity: 0.72, volumeFactor: 1.35 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Paixhans_gun" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Canon-Obusier-80lbs-22cm-Paixhans-No.4621.jpg" }
         ]
       }
     };
@@ -1317,7 +1527,10 @@ HTML_PAGE = """<!DOCTYPE html>
       ideal: null,
       drag: null,
       currentGun: null,
+      presetModified: false,
+      scaleMode: "stable",
       hoveredGun: null,
+      hoverHideTimer: null,
       controlsCollapsed: false,
       animationStart: 0,
       animating: false
@@ -1339,6 +1552,26 @@ HTML_PAGE = """<!DOCTYPE html>
       return { maxX: maxX * 1.08, maxY: maxY * 1.15 };
     }
 
+    function computeFocusedPlotBounds(params) {
+      const sampledAngles = Array.from(new Set([
+        Math.max(5, params.angle - 10),
+        params.angle,
+        Math.min(85, params.angle + 10)
+      ])).sort((left, right) => left - right);
+      let maxX = 1;
+      let maxY = 1;
+
+      sampledAngles.forEach((angle) => {
+        const sampleParams = { ...params, angle };
+        const ideal = simulateIdeal(sampleParams);
+        const drag = simulateDrag(sampleParams);
+        maxX = Math.max(maxX, ideal.metrics.range, drag.metrics.range);
+        maxY = Math.max(maxY, ideal.metrics.maxHeight, drag.metrics.maxHeight);
+      });
+
+      return { maxX: maxX * 1.1, maxY: maxY * 1.18 };
+    }
+
     const plotReferenceScenarios = [
       defaults,
       ...Object.values(presets),
@@ -1355,8 +1588,60 @@ HTML_PAGE = """<!DOCTYPE html>
         maxY: Math.max(bounds.maxY, sampleBounds.maxY)
       };
     }, { maxX: 1, maxY: 1 });
-    FIXED_PLOT_BOUNDS.maxX = 2400;
-    FIXED_PLOT_BOUNDS.maxY = 850;
+    FIXED_PLOT_BOUNDS.maxX = Math.max(2400, FIXED_PLOT_BOUNDS.maxX);
+    FIXED_PLOT_BOUNDS.maxY = Math.max(850, FIXED_PLOT_BOUNDS.maxY);
+    const HISTORICAL_GUN_PLOT_BOUNDS = Object.fromEntries(
+      Object.entries(historicalGuns).map(([key, gun]) => {
+        const gunBounds = computeFocusedPlotBounds(gun.params);
+        return [key, {
+          maxX: Math.max(200, gunBounds.maxX),
+          maxY: Math.max(80, gunBounds.maxY)
+        }];
+      })
+    );
+
+    function activePlotBounds() {
+      if (state.scaleMode === "fit") {
+        return computeFocusedPlotBounds(state.params);
+      }
+      return state.currentGun ? HISTORICAL_GUN_PLOT_BOUNDS[state.currentGun] : FIXED_PLOT_BOUNDS;
+    }
+
+    function updateScaleButtons() {
+      const stableBtn = document.getElementById("scaleStableBtn");
+      const fitBtn = document.getElementById("scaleFitBtn");
+      stableBtn.classList.toggle("active", state.scaleMode === "stable");
+      fitBtn.classList.toggle("active", state.scaleMode === "fit");
+    }
+
+    function setScaleMode(mode) {
+      state.scaleMode = mode;
+      updateScaleButtons();
+      redrawDisplay();
+    }
+
+    function setProjectileShape(shape, options = {}) {
+      state.params.projectileShape = shape;
+      if (shape === "shell") {
+        state.params.sphericity = options.sphericity ?? state.params.sphericity ?? CUSTOM_SHELL_SPHERICITY;
+        state.params.volumeFactor = options.volumeFactor ?? state.params.volumeFactor ?? CUSTOM_SHELL_VOLUME_FACTOR;
+      } else {
+        state.params.sphericity = 1;
+        state.params.volumeFactor = 1;
+      }
+      updateShapeControls();
+    }
+
+    function updateShapeControls() {
+      const isShell = state.params.projectileShape === "shell";
+      shapeSphereBtn.classList.toggle("active", !isShell);
+      shapeShellBtn.classList.toggle("active", isShell);
+    }
+
+    function syncMaterialDensityLimit(materialDensity) {
+      const roundedMax = Math.ceil(materialDensity / 10) * 10;
+      controls.materialDensity.max = String(Math.max(defaultMaterialDensityMax, roundedMax));
+    }
 
     function setControlsCollapsed(collapsed) {
       state.controlsCollapsed = collapsed;
@@ -1367,6 +1652,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function readParams() {
       return {
+        ...state.params,
         angle: Number(controls.angle.value),
         speed: Number(controls.speed.value),
         materialDensity: Number(controls.materialDensity.value),
@@ -1378,6 +1664,10 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function syncControls(params) {
+      if (typeof params.materialDensity === "number") {
+        syncMaterialDensityLimit(params.materialDensity);
+      }
+      state.params = { ...state.params, ...params };
       Object.entries(params).forEach(([key, value]) => {
         const control = controls[key];
         if (!control) {
@@ -1389,24 +1679,37 @@ HTML_PAGE = """<!DOCTYPE html>
           control.value = String(value);
         }
       });
+      updateShapeControls();
       updateLabels();
+    }
+
+    function paramsMatch(left, right) {
+      const keys = ["angle", "speed", "materialDensity", "temperature", "pressure", "diameter", "dt", "projectileShape", "sphericity", "volumeFactor"];
+      return keys.every((key) => {
+        if (typeof left[key] === "string" || typeof right[key] === "string") {
+          return left[key] === right[key];
+        }
+        return Math.abs(left[key] - right[key]) < 1e-9;
+      });
     }
 
     function setGunMode(gunKey) {
       state.currentGun = gunKey;
+      state.presetModified = false;
       syncControls(historicalGuns[gunKey].params);
       applyGunMode();
     }
 
     function clearGunMode() {
       state.currentGun = null;
+      state.presetModified = false;
       applyGunMode();
     }
 
     function applyGunMode() {
       const inGunMode = Boolean(state.currentGun);
       lockNoteEl.innerHTML = inGunMode
-        ? `<strong>${historicalGuns[state.currentGun].name}</strong>`
+        ? `<strong>${historicalGuns[state.currentGun].name}</strong>${state.presetModified ? ' <span class="muted">(customized)</span>' : ""}`
         : `select a real gun`;
       renderGunLibrary();
     }
@@ -1427,7 +1730,7 @@ HTML_PAGE = """<!DOCTYPE html>
           showGunHover(card.dataset.gun);
         });
         card.addEventListener("mouseleave", () => {
-          hideGunHover();
+          scheduleHideGunHover();
         });
         card.addEventListener("click", () => {
           showGunHover(card.dataset.gun);
@@ -1438,6 +1741,8 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function showGunHover(gunKey) {
+      clearTimeout(state.hoverHideTimer);
+      state.hoverHideTimer = null;
       state.hoveredGun = gunKey;
       const gun = historicalGuns[gunKey];
       gunHoverTitle.textContent = gun.name;
@@ -1446,9 +1751,12 @@ HTML_PAGE = """<!DOCTYPE html>
       gunHoverImage.alt = gun.imageAlt;
       gunHoverImage.style.objectPosition = gun.imagePosition || "center center";
       gunHoverImage.style.transform = `scale(${gun.imageScale || 1})`;
+      const densityLabel = gun.params.projectileShape === "shell" ? "Effective projectile density" : "Material density";
+      const shapeLabel = gun.params.projectileShape === "shell" ? "Elongated shell" : "Round shot sphere";
       gunHoverSpecs.innerHTML = `
         <span><strong>Diameter:</strong> ${gun.diameterLabel}</span>
-        <span><strong>Material density:</strong> ${Math.round(gun.params.materialDensity)} kg/m³</span>
+        <span><strong>Shape model:</strong> ${shapeLabel}</span>
+        <span><strong>${densityLabel}:</strong> ${Math.round(gun.params.materialDensity)} kg/m³</span>
         <span><strong>Projectile:</strong> ${gun.projectile}</span>
         <span><strong>Muzzle velocity:</strong> ${gun.muzzleVelocity}</span>
         <span><strong>Service:</strong> ${gun.service}</span>
@@ -1460,19 +1768,35 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function hideGunHover() {
+      clearTimeout(state.hoverHideTimer);
+      state.hoverHideTimer = null;
       state.hoveredGun = null;
       gunHover.classList.add("hidden");
     }
 
+    function scheduleHideGunHover() {
+      clearTimeout(state.hoverHideTimer);
+      state.hoverHideTimer = window.setTimeout(() => {
+        hideGunHover();
+      }, 160);
+    }
+
     function updateLabels() {
       state.params = readParams();
+      syncMaterialDensityLimit(state.params.materialDensity);
+      if (state.currentGun) {
+        state.presetModified = !paramsMatch(state.params, historicalGuns[state.currentGun].params);
+        applyGunMode();
+      }
       document.querySelectorAll("[data-out]").forEach((node) => {
         const key = node.dataset.out;
         node.textContent = formatters[key](state.params[key]);
       });
       document.getElementById("hero-angle").textContent = formatters.angle(state.params.angle);
       document.getElementById("hero-speed").textContent = formatters.speed(state.params.speed);
-      document.getElementById("hero-mode").textContent = state.currentGun ? historicalGuns[state.currentGun].name : "Ideal + Drag";
+      document.getElementById("hero-mode").textContent = state.currentGun
+        ? `${historicalGuns[state.currentGun].name}${state.presetModified ? " custom" : ""}`
+        : "Manual setup";
     }
 
     function temperatureToKelvin(temperatureC) {
@@ -1523,9 +1847,22 @@ HTML_PAGE = """<!DOCTYPE html>
       return 0.44;
     }
 
+    function dragCoefficientForNonspherical(reynolds, sphericity) {
+      if (reynolds <= 0 || sphericity <= 0 || sphericity > 1) {
+        return 0;
+      }
+      const a = Math.exp(2.3288 - (6.4581 * sphericity) + (2.4486 * sphericity * sphericity));
+      const b = 0.0964 + (0.5565 * sphericity);
+      const c = Math.exp(4.905 - (13.8944 * sphericity) + (18.4222 * sphericity * sphericity) - (10.2599 * sphericity ** 3));
+      const d = Math.exp(1.4681 + (12.2584 * sphericity) - (20.7322 * sphericity * sphericity) + (15.8855 * sphericity ** 3));
+      return (24 / reynolds) * (1 + (a * (reynolds ** b))) + (c / (1 + (d / reynolds)));
+    }
+
     function aerodynamicState(speed, params, density, viscosity, area) {
       const reynolds = reynoldsNumber(density, speed, params.diameter, viscosity);
-      const dragCoefficient = dragCoefficientForReynolds(reynolds);
+      const dragCoefficient = params.projectileShape === "shell"
+        ? dragCoefficientForNonspherical(reynolds, params.sphericity)
+        : dragCoefficientForReynolds(reynolds);
       const dragForce = 0.5 * density * dragCoefficient * area * speed * speed;
       return {
         airDensity: density,
@@ -1538,7 +1875,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function derivedProjectileMass(params) {
-      return massFromMaterialDensity(params.materialDensity, params.diameter);
+      return massFromMaterialDensity(params.materialDensity, params.diameter, params.volumeFactor || 1);
     }
 
     function simulateIdeal(params) {
@@ -1674,12 +2011,22 @@ HTML_PAGE = """<!DOCTYPE html>
       };
     }
 
-    function recompute() {
-      updateLabels();
+    function recalculatePhysics() {
       state.ideal = simulateIdeal(state.params);
       state.drag = simulateDrag(state.params);
+    }
+
+    function redrawDisplay() {
+      document.getElementById("hero-ideal-speed").textContent = `${state.ideal.metrics.finalSpeed.toFixed(1)} m/s`;
+      document.getElementById("hero-drag-speed").textContent = `${state.drag.metrics.finalSpeed.toFixed(1)} m/s`;
       renderMetrics();
       drawScene(1);
+    }
+
+    function recompute() {
+      updateLabels();
+      recalculatePhysics();
+      redrawDisplay();
     }
 
     function renderMetrics() {
@@ -1789,6 +2136,91 @@ HTML_PAGE = """<!DOCTYPE html>
       ctx.moveTo(geometry.offsetX, geometry.offsetY);
       ctx.lineTo(geometry.offsetX, geometry.offsetY - geometry.usedHeight);
       ctx.stroke();
+
+      drawScaleReferences(bounds);
+    }
+
+    function drawScaleReferences(bounds) {
+      const references = [
+        {
+          name: "Football field",
+          x: 36,
+          width: 109.7,
+          height: 48.8,
+          draw() {
+            const bottomLeft = toCanvas(this.x, 0, bounds);
+            const topRight = toCanvas(this.x + this.width, this.height, bounds);
+            const widthPx = topRight.x - bottomLeft.x;
+            const heightPx = bottomLeft.y - topRight.y;
+            if (widthPx < 36 || heightPx < 14) {
+              return false;
+            }
+            ctx.save();
+            ctx.strokeStyle = "rgba(31,31,26,0.12)";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.strokeRect(bottomLeft.x, topRight.y, widthPx, heightPx);
+            ctx.beginPath();
+            ctx.moveTo(bottomLeft.x + widthPx / 2, topRight.y);
+            ctx.lineTo(bottomLeft.x + widthPx / 2, bottomLeft.y);
+            ctx.stroke();
+            ctx.restore();
+            labelReference(this.name, bottomLeft.x, topRight.y - 6);
+            return true;
+          }
+        },
+        {
+          name: "Eiffel Tower",
+          x: 190,
+          width: 125,
+          height: 330,
+          draw() {
+            const baseLeft = toCanvas(this.x, 0, bounds);
+            const baseRight = toCanvas(this.x + this.width, 0, bounds);
+            const apex = toCanvas(this.x + (this.width / 2), this.height, bounds);
+            const towerHeightPx = baseLeft.y - apex.y;
+            const towerWidthPx = baseRight.x - baseLeft.x;
+            if (towerHeightPx < 24) {
+              return false;
+            }
+            const legInset = towerWidthPx * 0.18;
+            const archHeight = towerHeightPx * 0.16;
+            const midY = baseLeft.y - (towerHeightPx * 0.48);
+            const topY = baseLeft.y - (towerHeightPx * 0.78);
+            const midInset = towerWidthPx * 0.29;
+            const topInset = towerWidthPx * 0.4;
+            ctx.save();
+            ctx.strokeStyle = "rgba(31,31,26,0.14)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(baseLeft.x, baseLeft.y);
+            ctx.lineTo(apex.x, apex.y);
+            ctx.lineTo(baseRight.x, baseRight.y);
+            ctx.moveTo(baseLeft.x + legInset, baseLeft.y);
+            ctx.quadraticCurveTo(apex.x, baseLeft.y - archHeight, baseRight.x - legInset, baseRight.y);
+            ctx.moveTo(baseLeft.x + midInset, midY);
+            ctx.lineTo(baseRight.x - midInset, midY);
+            ctx.moveTo(baseLeft.x + topInset, topY);
+            ctx.lineTo(baseRight.x - topInset, topY);
+            ctx.stroke();
+            ctx.restore();
+            labelReference(this.name, apex.x - 24, apex.y - 6);
+            return true;
+          }
+        }
+      ];
+
+      references.forEach((reference) => {
+        reference.draw();
+      });
+    }
+
+    function labelReference(text, x, y) {
+      ctx.save();
+      ctx.fillStyle = "rgba(31,31,26,0.42)";
+      ctx.font = "11px Trebuchet MS";
+      ctx.fillText(text, x, y);
+      ctx.restore();
     }
 
     function drawPath(points, color, bounds, progress) {
@@ -1857,7 +2289,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function drawScene(progress) {
-      const bounds = FIXED_PLOT_BOUNDS;
+      const bounds = activePlotBounds();
       drawGrid(bounds);
 
       drawPath(state.ideal.points, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), bounds, progress);
@@ -1920,17 +2352,43 @@ HTML_PAGE = """<!DOCTYPE html>
     toggleControlsBtn.addEventListener("click", () => {
       setControlsCollapsed(!state.controlsCollapsed);
     });
+    document.getElementById("scaleStableBtn").addEventListener("click", () => {
+      setScaleMode("stable");
+    });
+    document.getElementById("scaleFitBtn").addEventListener("click", () => {
+      setScaleMode("fit");
+    });
+    shapeSphereBtn.addEventListener("click", () => {
+      setProjectileShape("sphere");
+      recompute();
+    });
+    shapeShellBtn.addEventListener("click", () => {
+      setProjectileShape("shell", {
+        sphericity: state.params.projectileShape === "shell" ? state.params.sphericity : CUSTOM_SHELL_SPHERICITY,
+        volumeFactor: state.params.projectileShape === "shell" ? state.params.volumeFactor : CUSTOM_SHELL_VOLUME_FACTOR
+      });
+      recompute();
+    });
+    gunHover.addEventListener("mouseenter", () => {
+      clearTimeout(state.hoverHideTimer);
+      state.hoverHideTimer = null;
+    });
+    gunHover.addEventListener("mouseleave", () => {
+      scheduleHideGunHover();
+    });
     document.querySelectorAll("[data-density]").forEach((button) => {
       button.addEventListener("click", () => {
         controls.materialDensity.value = button.dataset.density;
         recompute();
       });
     });
-    window.addEventListener("resize", recompute);
+    window.addEventListener("resize", redrawDisplay);
 
     renderGunLibrary();
     hideGunHover();
     setControlsCollapsed(false);
+    updateScaleButtons();
+    updateShapeControls();
     syncControls(defaults);
     applyGunMode();
     recompute();
