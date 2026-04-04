@@ -1574,10 +1574,6 @@ HTML_PAGE = """<!DOCTYPE html>
       const deltaRange = state.ideal.metrics.range - state.drag.metrics.range;
       const angleHint = dragAero.airDensity > 0 ? "Lower angles often win with drag." : "Vacuum restores the 45° symmetry.";
       rows.push(metricCard("Range loss to drag", deltaRange, "m", angleHint));
-      rows.push(metricCard("Air density", dragAero.airDensity, "kg/m³", `From ${state.params.temperature.toFixed(1)} °C and ${state.params.pressure.toFixed(2)} atm`));
-      rows.push(metricCard("Launch Reynolds", dragAero.launchReynolds, "", `Diameter ${state.params.diameter.toFixed(3)} m`));
-      rows.push(metricCard("Launch drag coefficient", dragAero.launchDragCoefficient, "", `Sphere correlation from Reynolds number`));
-      rows.push(metricCard("Launch drag force", dragAero.launchDragForce, "N", `Area ${dragAero.area.toFixed(4)} m²`));
       rows.push(metricCard("Time step", state.params.dt, "s", "Smaller steps improve stability but cost more frames."));
       metricsEl.innerHTML = rows.join("");
     }
