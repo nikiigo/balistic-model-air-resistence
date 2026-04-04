@@ -49,7 +49,33 @@ HTML_PAGE = """<!DOCTYPE html>
       --compare: #3f8a47;
       --border: rgba(31, 31, 26, 0.12);
       --shadow: 0 20px 60px rgba(84, 56, 21, 0.16);
-      --main-panel-height: 620px;
+      --shell-width: min(1400px, calc(100vw - clamp(16px, 2vw, 32px)));
+      --layout-gap: clamp(12px, 1.1vw, 18px);
+      --card-radius: clamp(18px, 1.5vw, 24px);
+      --card-padding: clamp(16px, 1.4vw, 22px);
+      --hero-pad-y: clamp(10px, 0.9vw, 14px);
+      --hero-pad-x: clamp(14px, 1.25vw, 20px);
+      --guns-width: clamp(220px, 15.95vw, 255px);
+      --main-panel-height: clamp(520px, 68vh, 620px);
+      --canvas-height: clamp(340px, 45vh, 400px);
+      --hero-stat-pad-y: clamp(4px, 0.45vw, 5px);
+      --hero-stat-pad-x: clamp(6px, 0.65vw, 8px);
+      --hero-stat-radius: clamp(14px, 1.1vw, 18px);
+      --control-pop-width: clamp(270px, 20.5vw, 330px);
+      --control-pop-offset: clamp(10px, 1.1vw, 18px);
+      --control-pop-pad: clamp(8px, 0.75vw, 10px);
+      --overlay-radius: clamp(14px, 1.1vw, 18px);
+      --overlay-gap: clamp(8px, 0.9vw, 12px);
+      --overlay-chip-pad-y: clamp(8px, 0.75vw, 10px);
+      --overlay-chip-pad-x: clamp(10px, 0.95vw, 12px);
+      --metric-pad: clamp(8px, 0.85vw, 10px);
+      --gun-card-height: clamp(110px, 14vh, 132px);
+      --gun-card-pad: clamp(6px, 0.7vw, 8px);
+      --gun-hover-width: clamp(280px, 24vw, 340px);
+      --gun-hover-pad: clamp(10px, 1vw, 14px);
+      --caption-inset: clamp(10px, 1vw, 14px);
+      --caption-pad-y: clamp(5px, 0.55vw, 6px);
+      --caption-pad-x: clamp(6px, 0.65vw, 8px);
     }
 
     * { box-sizing: border-box; }
@@ -66,11 +92,11 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     .shell {
-      width: min(1400px, calc(100vw - 32px));
-      margin: 24px auto;
+      width: var(--shell-width);
+      margin: clamp(12px, 1.7vw, 24px) auto;
       display: grid;
-      gap: 18px;
-      grid-template-columns: 255px minmax(0, 1fr);
+      gap: var(--layout-gap);
+      grid-template-columns: var(--guns-width) minmax(0, 1fr);
       grid-template-areas:
         "header header"
         "guns viz"
@@ -80,17 +106,17 @@ HTML_PAGE = """<!DOCTYPE html>
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 24px;
+      border-radius: var(--card-radius);
       box-shadow: var(--shadow);
       backdrop-filter: blur(10px);
     }
 
     .hero {
       grid-area: header;
-      padding: 14px 20px;
+      padding: var(--hero-pad-y) var(--hero-pad-x);
       display: grid;
-      gap: 10px;
-      grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+      gap: clamp(8px, 0.8vw, 10px);
+      grid-template-columns: minmax(0, 1.4fr) minmax(clamp(220px, 16vw, 260px), 0.8fr);
       align-items: end;
     }
 
@@ -110,14 +136,14 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .stat-strip {
       display: grid;
-      gap: 12px;
+      gap: clamp(8px, 0.9vw, 12px);
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .stat {
       background: linear-gradient(180deg, rgba(255,255,255,0.65), rgba(255,255,255,0.35));
-      border-radius: 18px;
-      padding: 5px 8px;
+      border-radius: var(--hero-stat-radius);
+      padding: var(--hero-stat-pad-y) var(--hero-stat-pad-x);
       border: 1px solid rgba(255,255,255,0.5);
       font-size: 0.8rem;
     }
@@ -132,9 +158,9 @@ HTML_PAGE = """<!DOCTYPE html>
       grid-area: guns;
       position: relative;
       z-index: 4;
-      padding: 22px;
+      padding: var(--card-padding);
       display: grid;
-      gap: 16px;
+      gap: var(--layout-gap);
       align-content: stretch;
       height: var(--main-panel-height);
     }
@@ -158,12 +184,12 @@ HTML_PAGE = """<!DOCTYPE html>
     .control-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: clamp(8px, 0.8vw, 10px);
     }
 
     label {
       display: grid;
-      gap: 5px;
+      gap: clamp(4px, 0.45vw, 5px);
       font-size: 0.82rem;
       font-weight: 700;
     }
@@ -171,7 +197,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .control-header {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
+      gap: var(--overlay-gap);
       align-items: baseline;
     }
 
@@ -187,9 +213,9 @@ HTML_PAGE = """<!DOCTYPE html>
 
     input[type="number"] {
       width: 100%;
-      border-radius: 12px;
+      border-radius: clamp(10px, 0.9vw, 12px);
       border: 1px solid var(--border);
-      padding: 10px 12px;
+      padding: clamp(8px, 0.85vw, 10px) clamp(10px, 0.95vw, 12px);
       background: rgba(255,255,255,0.85);
       font: inherit;
       color: var(--ink);
@@ -200,21 +226,21 @@ HTML_PAGE = """<!DOCTYPE html>
     .preset-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: clamp(8px, 0.8vw, 10px);
     }
 
     .section-stack {
       display: grid;
-      gap: 16px;
+      gap: var(--layout-gap);
     }
 
     .toggle {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: clamp(5px, 0.55vw, 6px);
       background: rgba(255,255,255,0.7);
       border-radius: 999px;
-      padding: 5px 9px;
+      padding: clamp(4px, 0.45vw, 5px) clamp(8px, 0.75vw, 9px);
       border: 1px solid var(--border);
       font-weight: 600;
       font-size: 0.78rem;
@@ -223,7 +249,7 @@ HTML_PAGE = """<!DOCTYPE html>
     button {
       border: none;
       border-radius: 999px;
-      padding: 7px 11px;
+      padding: clamp(6px, 0.65vw, 7px) clamp(9px, 0.9vw, 11px);
       font: inherit;
       font-weight: 700;
       font-size: 0.8rem;
@@ -240,37 +266,40 @@ HTML_PAGE = """<!DOCTYPE html>
       grid-area: viz;
       position: relative;
       z-index: 1;
-      padding: 22px;
+      padding: var(--card-padding);
       display: grid;
-      gap: 16px;
-      align-content: start;
+      gap: var(--layout-gap);
+      align-content: stretch;
+      grid-template-rows: minmax(0, 1fr) auto;
+      min-height: 0;
       height: var(--main-panel-height);
     }
 
     .canvas-wrap {
       position: relative;
-      border-radius: 24px;
+      border-radius: var(--card-radius);
       overflow: hidden;
       border: 1px solid var(--border);
       background:
         linear-gradient(180deg, rgba(185, 215, 234, 0.95) 0%, rgba(225, 242, 251, 0.95) 48%, rgba(200, 217, 160, 0.95) 48%, rgba(183, 198, 134, 0.95) 100%);
-      min-height: 400px;
+      min-height: 0;
+      height: 100%;
     }
 
     .control-pop {
       position: absolute;
-      top: 18px;
-      right: 18px;
+      top: var(--control-pop-offset);
+      right: var(--control-pop-offset);
       z-index: 3;
-      width: min(330px, calc(100% - 36px));
-      padding: 10px;
+      width: min(var(--control-pop-width), calc(100% - (var(--control-pop-offset) * 2)));
+      padding: var(--control-pop-pad);
       display: grid;
-      gap: 8px;
-      max-height: calc(100% - 36px);
+      gap: clamp(6px, 0.7vw, 8px);
+      max-height: calc(100% - (var(--control-pop-offset) * 2));
       overflow: hidden;
       background: rgba(255, 248, 236, 0.92);
       border: 1px solid rgba(31, 31, 26, 0.12);
-      border-radius: 16px;
+      border-radius: clamp(12px, 1vw, 16px);
       box-shadow: 0 18px 50px rgba(84, 56, 21, 0.22);
       backdrop-filter: blur(10px);
       grid-template-rows: auto minmax(0, 1fr);
@@ -279,7 +308,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .control-panel-head {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
+      gap: var(--overlay-gap);
       align-items: center;
     }
 
@@ -292,7 +321,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .control-scroll {
       display: grid;
-      gap: 8px;
+      gap: clamp(6px, 0.7vw, 8px);
       overflow: auto;
       padding-right: 2px;
     }
@@ -304,21 +333,21 @@ HTML_PAGE = """<!DOCTYPE html>
     canvas {
       display: block;
       width: 100%;
-      height: 400px;
+      height: 100%;
     }
 
     .legend {
       position: absolute;
-      left: 18px;
-      top: 18px;
+      left: var(--control-pop-offset);
+      top: var(--control-pop-offset);
       z-index: 2;
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: var(--overlay-gap);
       color: rgba(31, 31, 26, 0.86);
       font-size: 0.85rem;
-      padding: 10px 12px;
-      border-radius: 18px;
+      padding: var(--overlay-chip-pad-y) var(--overlay-chip-pad-x);
+      border-radius: var(--overlay-radius);
       background: rgba(255, 248, 236, 0.84);
       border: 1px solid rgba(31, 31, 26, 0.12);
       box-shadow: 0 10px 26px rgba(84, 56, 21, 0.18);
@@ -328,7 +357,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .legend span {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: clamp(6px, 0.7vw, 8px);
     }
 
     .legend i {
@@ -340,15 +369,17 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .metric-grid {
       display: grid;
-      gap: 8px;
+      gap: clamp(6px, 0.7vw, 8px);
       grid-template-columns: repeat(3, minmax(0, 1fr));
+      min-width: 0;
     }
 
     .metric {
-      padding: 10px;
-      border-radius: 14px;
+      padding: var(--metric-pad);
+      border-radius: clamp(12px, 1vw, 14px);
       background: rgba(255,255,255,0.7);
       border: 1px solid var(--border);
+      min-width: 0;
     }
 
     .metric .label {
@@ -361,6 +392,7 @@ HTML_PAGE = """<!DOCTYPE html>
       display: block;
       font-size: 1rem;
       line-height: 1;
+      word-break: break-word;
     }
 
     .metric small {
@@ -372,16 +404,16 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .notes {
       grid-area: notes;
-      padding: 22px;
+      padding: var(--card-padding);
       display: grid;
-      gap: 14px;
+      gap: clamp(10px, 1vw, 14px);
       align-content: start;
     }
 
     .note {
       background: rgba(255,255,255,0.72);
-      border-radius: 18px;
-      padding: 14px;
+      border-radius: var(--overlay-radius);
+      padding: clamp(10px, 1vw, 14px);
       border: 1px solid var(--border);
     }
 
@@ -394,15 +426,15 @@ HTML_PAGE = """<!DOCTYPE html>
     .gun-card,
     .gun-hover {
       background: rgba(255,255,255,0.72);
-      border-radius: 18px;
+      border-radius: var(--overlay-radius);
       border: 1px solid var(--border);
     }
 
     .lock-note {
-      padding: 8px 10px;
+      padding: clamp(6px, 0.7vw, 8px) clamp(8px, 0.85vw, 10px);
       font-size: 0.82rem;
       line-height: 1.1;
-      border-radius: 12px;
+      border-radius: clamp(10px, 0.9vw, 12px);
     }
 
     .gun-library {
@@ -411,7 +443,7 @@ HTML_PAGE = """<!DOCTYPE html>
       overflow-y: auto;
       overflow-x: hidden;
       scroll-snap-type: y mandatory;
-      gap: 12px;
+      gap: var(--overlay-gap);
       padding-right: 4px;
       min-height: 0;
       flex: 1 1 auto;
@@ -422,15 +454,15 @@ HTML_PAGE = """<!DOCTYPE html>
       z-index: 6;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
-      gap: 12px;
+      gap: var(--overlay-gap);
       min-height: 0;
       height: 100%;
     }
 
     .gun-card {
-      min-height: 132px;
-      flex: 0 0 132px;
-      padding: 8px;
+      min-height: var(--gun-card-height);
+      flex: 0 0 var(--gun-card-height);
+      padding: var(--gun-card-pad);
       display: block;
       cursor: pointer;
       scroll-snap-align: start;
@@ -447,22 +479,22 @@ HTML_PAGE = """<!DOCTYPE html>
       width: 100%;
       height: 100%;
       display: block;
-      border-radius: 14px;
+      border-radius: clamp(12px, 1vw, 14px);
       object-fit: cover;
       background: rgba(0,0,0,0.06);
     }
 
     .gun-caption {
       position: absolute;
-      left: 14px;
-      right: 14px;
-      bottom: 14px;
-      padding: 6px 8px;
+      left: var(--caption-inset);
+      right: var(--caption-inset);
+      bottom: var(--caption-inset);
+      padding: var(--caption-pad-y) var(--caption-pad-x);
       text-align: center;
       font-size: 0.76rem;
       color: #fffaf0;
       font-weight: 800;
-      border-radius: 10px;
+      border-radius: clamp(8px, 0.8vw, 10px);
       background: transparent;
       border: none;
       text-shadow: 0 1px 8px rgba(0, 0, 0, 0.72);
@@ -470,7 +502,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .gun-copy {
       display: grid;
-      gap: 6px;
+      gap: clamp(5px, 0.55vw, 6px);
     }
 
     .gun-copy h3,
@@ -481,7 +513,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .gun-specs {
       display: grid;
-      gap: 6px;
+      gap: clamp(5px, 0.55vw, 6px);
       color: var(--muted);
       font-size: 0.92rem;
     }
@@ -489,11 +521,11 @@ HTML_PAGE = """<!DOCTYPE html>
     .gun-hover {
       position: absolute;
       top: 0;
-      left: calc(100% + 12px);
-      width: min(340px, 42vw);
-      padding: 14px;
+      left: calc(100% + var(--overlay-gap));
+      width: min(var(--gun-hover-width), 42vw);
+      padding: var(--gun-hover-pad);
       display: grid;
-      gap: 12px;
+      gap: var(--overlay-gap);
       background: rgba(255, 248, 236, 0.96);
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
       z-index: 5;
@@ -506,14 +538,14 @@ HTML_PAGE = """<!DOCTYPE html>
     .gun-hover-head {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
+      gap: var(--overlay-gap);
       align-items: start;
     }
 
     .source-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: clamp(6px, 0.7vw, 8px);
     }
 
     .source-list a {
@@ -547,6 +579,10 @@ HTML_PAGE = """<!DOCTYPE html>
       .guns,
       .viz {
         height: auto;
+      }
+
+      .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
@@ -1240,18 +1276,37 @@ HTML_PAGE = """<!DOCTYPE html>
       return { maxX: maxX * 1.08, maxY: maxY * 1.15 };
     }
 
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const cssWidth = Math.max(1, Math.round(rect.width));
+      const cssHeight = Math.max(1, Math.round(rect.height));
+      const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+      const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { width: cssWidth, height: cssHeight };
+    }
+
     function getPlotGeometry(bounds) {
+      const cssWidth = canvas.width / (window.devicePixelRatio || 1);
+      const cssHeight = canvas.height / (window.devicePixelRatio || 1);
       const padLeft = 64;
       const padRight = 24;
       const padTop = 24;
       const padBottom = 44;
-      const plotWidth = canvas.width - padLeft - padRight;
-      const plotHeight = canvas.height - padTop - padBottom;
+      const plotWidth = cssWidth - padLeft - padRight;
+      const plotHeight = cssHeight - padTop - padBottom;
       const scale = Math.min(plotWidth / bounds.maxX, plotHeight / bounds.maxY);
       const usedWidth = bounds.maxX * scale;
       const usedHeight = bounds.maxY * scale;
       const offsetX = padLeft + ((plotWidth - usedWidth) / 2);
-      const offsetY = canvas.height - padBottom;
+      const offsetY = cssHeight - padBottom;
       return { padLeft, padRight, padTop, padBottom, plotWidth, plotHeight, scale, offsetX, offsetY, usedWidth, usedHeight };
     }
 
@@ -1264,8 +1319,9 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function drawGrid(bounds) {
+      const viewport = resizeCanvas();
       const geometry = getPlotGeometry(bounds);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, viewport.width, viewport.height);
       ctx.lineWidth = 1;
       ctx.strokeStyle = "rgba(0,0,0,0.08)";
       ctx.fillStyle = "rgba(31,31,26,0.72)";
@@ -1278,7 +1334,7 @@ HTML_PAGE = """<!DOCTYPE html>
         ctx.moveTo(x, geometry.padTop);
         ctx.lineTo(x, geometry.offsetY);
         ctx.stroke();
-        ctx.fillText(`${worldX.toFixed(0)} m`, x - 16, canvas.height - 18);
+        ctx.fillText(`${worldX.toFixed(0)} m`, x - 16, viewport.height - 18);
       }
 
       for (let i = 0; i <= 5; i += 1) {
@@ -1440,6 +1496,7 @@ HTML_PAGE = """<!DOCTYPE html>
         launch();
       });
     });
+    window.addEventListener("resize", recompute);
 
     renderGunLibrary();
     hideGunHover();
