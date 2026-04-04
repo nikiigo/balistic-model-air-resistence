@@ -42,7 +42,7 @@ The simulator parameters come from the launch-control panel:
 
 - Launch angle
 - Initial velocity
-- Projectile mass
+- Projectile material density
 - Air temperature
 - Air pressure
 - Projectile diameter
@@ -54,7 +54,7 @@ Historical gun presets populate those same controls with gun-specific values.
 
 The left-side gun library includes real artillery pieces from the 16th to 19th centuries with local images and hover details. Selecting a gun fills the simulator with that gun's ballistic inputs, including projectile diameter in millimeters.
 
-These presets are educational approximations. Documented shot size, projectile mass, and listed ranges or muzzle velocities were used where available, but the drag model still assumes a spherical projectile.
+These presets are educational approximations. Documented shot size, projectile mass, and listed ranges or muzzle velocities were used where available. The simulator derives projectile mass from diameter and material density while still assuming a spherical projectile.
 
 ## Drag Model
 

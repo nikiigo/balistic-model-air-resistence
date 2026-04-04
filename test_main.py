@@ -14,6 +14,8 @@ from main import (
     pressure_atm_to_pa,
     reynolds_number,
     simulate_drag_reference,
+    material_density_from_mass_and_diameter,
+    mass_from_material_density,
     sphere_area_from_diameter,
 )
 
@@ -70,6 +72,10 @@ class AerodynamicHelpersTests(unittest.TestCase):
         self.assertEqual(reynolds_number(1.2, 10.0, 0.0, 1.8e-5), 0.0)
         self.assertEqual(reynolds_number(1.2, 10.0, 0.1, 0.0), 0.0)
 
+    def test_material_density_round_trip_matches_mass(self) -> None:
+        density = material_density_from_mass_and_diameter(5.0, 0.1)
+        self.assertAlmostEqual(mass_from_material_density(density, 0.1), 5.0, places=9)
+
     def test_aerodynamic_state_consistency(self) -> None:
         aero = aerodynamic_state(speed=100.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
         self.assertAlmostEqual(aero["area"], sphere_area_from_diameter(0.1), places=9)
@@ -85,7 +91,7 @@ class DragSimulationRegressionTests(unittest.TestCase):
         return {
             "angle": 35.0,
             "speed": 120.0,
-            "mass": 5.0,
+            "materialDensity": material_density_from_mass_and_diameter(5.0, 0.1),
             "temperature": 15.0,
             "pressure": 1.0,
             "diameter": 0.1,
@@ -113,8 +119,8 @@ class DragSimulationRegressionTests(unittest.TestCase):
         large = simulate_drag_reference({**self.base_params(), "diameter": 0.2})
 
         self.assertGreater(large["aero"]["area"], small["aero"]["area"])
+        self.assertGreater(large["aero"]["projectile_mass"], small["aero"]["projectile_mass"])
         self.assertGreater(large["aero"]["launch_drag_force"], small["aero"]["launch_drag_force"])
-        self.assertLess(large["metrics"]["range"], small["metrics"]["range"])
 
     def test_higher_temperature_reduces_density(self) -> None:
         cold = aerodynamic_state(speed=120.0, temperature_c=-10.0, pressure_atm=1.0, diameter=0.1)
