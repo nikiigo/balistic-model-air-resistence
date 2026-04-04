@@ -348,10 +348,10 @@ HTML_PAGE = """<!DOCTYPE html>
       font-size: 0.85rem;
       padding: var(--overlay-chip-pad-y) var(--overlay-chip-pad-x);
       border-radius: var(--overlay-radius);
-      background: rgba(255, 248, 236, 0.84);
-      border: 1px solid rgba(31, 31, 26, 0.12);
-      box-shadow: 0 10px 26px rgba(84, 56, 21, 0.18);
-      backdrop-filter: blur(8px);
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      backdrop-filter: none;
     }
 
     .legend span {
