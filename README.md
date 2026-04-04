@@ -4,6 +4,10 @@ Interactive 2D projectile-motion simulator for physics education. The applicatio
 
 The app is dependency-free: a single Python server in `main.py` serves the entire UI, JavaScript simulator, and local historical gun images.
 
+Latest release: [`v1.0.0`](https://github.com/nikiigo/balistic-model-air-resistence/releases/tag/v1.0.0)
+
+![Interactive Ballistics Simulator](assets/screenshots/interactive-ballistics-simulator.png)
+
 ## What It Does
 
 - Simulates ideal projectile motion from the closed-form solution
@@ -134,10 +138,6 @@ The UI reports:
 - Drag range
 - Drag maximum height
 - Range loss to drag
-- Air density
-- Launch Reynolds number
-- Launch drag coefficient
-- Launch drag force
 - Time step
 
 ## Validation
@@ -168,10 +168,9 @@ The tests currently cover:
 
 Useful manual checks in the browser:
 
-- Set pressure to `0 atm` and verify the drag trajectory moves toward vacuum behavior.
+- Set pressure to `0.2 atm` and verify the drag trajectory moves closer to vacuum behavior.
 - Increase pressure and verify range decreases.
-- Increase projectile diameter and verify drag force increases and range decreases.
-- Increase temperature at fixed pressure and verify reported air density decreases.
+- Increase projectile diameter or material density and verify the trajectory changes consistently.
 - Select historical guns and confirm the diameter shown in the hover card matches the loaded control value.
 
 ## Deployment
