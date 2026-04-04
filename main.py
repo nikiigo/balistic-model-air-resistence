@@ -923,12 +923,12 @@ HTML_PAGE = """<!DOCTYPE html>
             </label>
             <label>
               <span class="control-header"><span>Material density</span><span class="value" data-out="materialDensity">1324 kg/m³</span></span>
-              <input id="materialDensity" type="range" min="50" max="25000" step="10" value="1324">
+              <input id="materialDensity" type="range" min="50" max="18000" step="10" value="1324">
               <div class="material-presets">
                 <button class="secondary material-chip" type="button" data-density="2500" title="Stone">S</button>
                 <button class="secondary material-chip" type="button" data-density="7800" title="Iron">I</button>
                 <button class="secondary material-chip" type="button" data-density="8700" title="Bronze">B</button>
-                <button class="secondary material-chip" type="button" data-density="11340" title="Lead">L</button>
+                <button class="secondary material-chip" type="button" data-density="19050" title="Uranium">U</button>
               </div>
             </label>
             <label>
