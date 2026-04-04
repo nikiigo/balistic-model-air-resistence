@@ -704,7 +704,7 @@ HTML_PAGE = """<!DOCTYPE html>
             </label>
             <label>
               <span class="control-header"><span>Initial velocity</span><span class="value" data-out="speed">55.0 m/s</span></span>
-              <input id="speed" type="range" min="5" max="180" step="1" value="55">
+              <input id="speed" type="range" min="5" max="440" step="1" value="55">
             </label>
             <label>
               <span class="control-header"><span>Projectile mass</span><span class="value" data-out="mass">1.00 kg</span></span>
@@ -1029,6 +1029,41 @@ HTML_PAGE = """<!DOCTYPE html>
       animating: false
     };
 
+    function computePlotBounds(params) {
+      const sampledAngles = [5, 15, 25, 35, 45, 55, 65, 75, 85];
+      let maxX = 1;
+      let maxY = 1;
+
+      sampledAngles.forEach((angle) => {
+        const sampleParams = { ...params, angle };
+        const ideal = simulateIdeal(sampleParams);
+        const drag = simulateDrag(sampleParams);
+        maxX = Math.max(maxX, ideal.metrics.range, drag.metrics.range);
+        maxY = Math.max(maxY, ideal.metrics.maxHeight, drag.metrics.maxHeight);
+      });
+
+      return { maxX: maxX * 1.08, maxY: maxY * 1.15 };
+    }
+
+    const plotReferenceScenarios = [
+      defaults,
+      ...Object.values(presets),
+      ...Object.values(historicalGuns).map((gun) => gun.params),
+      { ...defaults, angle: 45, speed: 440, airDensity: 0 },
+      { ...defaults, angle: 85, speed: 440, airDensity: 0 },
+      { ...defaults, angle: 45, speed: 440, mass: 20, dragCoefficient: 0.05, airDensity: 1.225, area: 0.001 }
+    ];
+
+    const FIXED_PLOT_BOUNDS = plotReferenceScenarios.reduce((bounds, params) => {
+      const sampleBounds = computePlotBounds(params);
+      return {
+        maxX: Math.max(bounds.maxX, sampleBounds.maxX),
+        maxY: Math.max(bounds.maxY, sampleBounds.maxY)
+      };
+    }, { maxX: 1, maxY: 1 });
+    FIXED_PLOT_BOUNDS.maxX = 2400;
+    FIXED_PLOT_BOUNDS.maxY = 850;
+
     function setControlsCollapsed(collapsed) {
       state.controlsCollapsed = collapsed;
       controlScroll.classList.toggle("hidden", collapsed);
@@ -1267,15 +1302,6 @@ HTML_PAGE = """<!DOCTYPE html>
       `;
     }
 
-    function worldBounds() {
-      const visible = [];
-      visible.push(...state.ideal.points);
-      visible.push(...state.drag.points);
-      const maxX = Math.max(1, ...visible.map((p) => p.x));
-      const maxY = Math.max(1, ...visible.map((p) => p.y));
-      return { maxX: maxX * 1.08, maxY: maxY * 1.15 };
-    }
-
     function resizeCanvas() {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
@@ -1302,19 +1328,20 @@ HTML_PAGE = """<!DOCTYPE html>
       const padBottom = 44;
       const plotWidth = cssWidth - padLeft - padRight;
       const plotHeight = cssHeight - padTop - padBottom;
-      const scale = Math.min(plotWidth / bounds.maxX, plotHeight / bounds.maxY);
-      const usedWidth = bounds.maxX * scale;
-      const usedHeight = bounds.maxY * scale;
-      const offsetX = padLeft + ((plotWidth - usedWidth) / 2);
+      const xScale = plotWidth / bounds.maxX;
+      const yScale = plotHeight / bounds.maxY;
+      const usedWidth = plotWidth;
+      const usedHeight = plotHeight;
+      const offsetX = padLeft;
       const offsetY = cssHeight - padBottom;
-      return { padLeft, padRight, padTop, padBottom, plotWidth, plotHeight, scale, offsetX, offsetY, usedWidth, usedHeight };
+      return { padLeft, padRight, padTop, padBottom, plotWidth, plotHeight, xScale, yScale, offsetX, offsetY, usedWidth, usedHeight };
     }
 
     function toCanvas(x, y, bounds) {
       const geometry = getPlotGeometry(bounds);
       return {
-        x: geometry.offsetX + (x * geometry.scale),
-        y: geometry.offsetY - (y * geometry.scale)
+        x: geometry.offsetX + (x * geometry.xScale),
+        y: geometry.offsetY - (y * geometry.yScale)
       };
     }
 
@@ -1329,7 +1356,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
       for (let i = 0; i <= 6; i += 1) {
         const worldX = (bounds.maxX * i) / 6;
-        const x = geometry.offsetX + (worldX * geometry.scale);
+        const x = geometry.offsetX + (worldX * geometry.xScale);
         ctx.beginPath();
         ctx.moveTo(x, geometry.padTop);
         ctx.lineTo(x, geometry.offsetY);
@@ -1339,7 +1366,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
       for (let i = 0; i <= 5; i += 1) {
         const worldY = bounds.maxY - (bounds.maxY * i) / 5;
-        const y = geometry.offsetY - (worldY * geometry.scale);
+        const y = geometry.offsetY - (worldY * geometry.yScale);
         ctx.beginPath();
         ctx.moveTo(geometry.offsetX, y);
         ctx.lineTo(geometry.offsetX + geometry.usedWidth, y);
@@ -1394,7 +1421,9 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function drawLaunchAngle(bounds) {
       const origin = toCanvas(0, 0, bounds);
+      const geometry = getPlotGeometry(bounds);
       const angleRad = state.params.angle * Math.PI / 180;
+      const displayAngle = Math.atan2(Math.sin(angleRad) * geometry.yScale, Math.cos(angleRad) * geometry.xScale);
       const radius = 34;
 
       ctx.strokeStyle = "rgba(31,31,26,0.6)";
@@ -1407,16 +1436,16 @@ HTML_PAGE = """<!DOCTYPE html>
 
       ctx.beginPath();
       ctx.moveTo(origin.x, origin.y);
-      ctx.lineTo(origin.x + Math.cos(angleRad) * (radius + 12), origin.y - Math.sin(angleRad) * (radius + 12));
+      ctx.lineTo(origin.x + Math.cos(displayAngle) * (radius + 12), origin.y - Math.sin(displayAngle) * (radius + 12));
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(origin.x, origin.y, radius, 0, -angleRad, true);
+      ctx.arc(origin.x, origin.y, radius, 0, -displayAngle, true);
       ctx.stroke();
 
       ctx.fillStyle = "rgba(31,31,26,0.86)";
       const labelRadius = radius + 18;
-      const labelAngle = angleRad / 2;
+      const labelAngle = displayAngle / 2;
       ctx.fillText(
         `${state.params.angle.toFixed(1)}°`,
         origin.x + Math.cos(labelAngle) * labelRadius - 8,
@@ -1425,7 +1454,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function drawScene(progress) {
-      const bounds = worldBounds();
+      const bounds = FIXED_PLOT_BOUNDS;
       drawGrid(bounds);
 
       drawPath(state.ideal.points, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), bounds, progress);
@@ -1442,7 +1471,6 @@ HTML_PAGE = """<!DOCTYPE html>
       ctx.beginPath();
       ctx.arc(origin.x, origin.y, 5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillText("Launch point", origin.x + 8, origin.y - 8);
     }
 
     function animate(timestamp) {
