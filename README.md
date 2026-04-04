@@ -69,7 +69,8 @@ But the aerodynamic terms are derived dynamically:
 - air density from the ideal gas law
 - dynamic viscosity from Sutherland's law
 - Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
-- drag coefficient from a piecewise sphere correlation for round shot and a nonspherical shell correlation for elongated shell presets
+- base drag coefficient from a piecewise sphere `Cd(Re)` correlation for round shot and a nonspherical `Cd(Re, sphericity)` correlation for elongated shell-like projectiles
+- an approximate Mach-aware compressibility multiplier applied on top of that base drag coefficient for high-speed flow
 - projectile area from diameter
 - projectile mass from material density and a shape-aware projectile volume approximation
 
@@ -96,7 +97,8 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 
 - round shot uses a spherical projectile model
 - shell presets use a simplified elongated-projectile drag model
-- subsonic flow only
+- pressure is clamped to a minimum supported value of `0.001 atm`
+- compressibility is handled with an approximate Mach-aware drag correction, not a fitted `Cd(Re, Ma)` table or a full transonic/supersonic aerodynamic model
 - no wind
 - no spin or Magnus effect
 - no terrain modeling
