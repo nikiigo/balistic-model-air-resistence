@@ -1,186 +1,153 @@
-# Interactive Ballistics Simulator
+# 🚀 Ballistic Simulation with Dynamic Air Resistance
 
-Interactive 2D projectile-motion simulator for physics education. The application compares an ideal analytical trajectory with a numerically integrated trajectory that includes aerodynamic drag derived from environmental conditions and projectile size.
+Physics-based projectile motion simulator with **non-constant aerodynamic drag**, computed dynamically from Reynolds number and atmospheric conditions.
 
-The app is dependency-free: a single Python server in `main.py` serves the entire UI, JavaScript simulator, and local historical gun images.
+---
 
-Latest release: [`v1.0.0`](https://github.com/nikiigo/balistic-model-air-resistence/releases/tag/v1.0.0)
+## ⚡ TL;DR
 
-![Interactive Ballistics Simulator](assets/screenshots/interactive-ballistics-simulator.png)
+This project implements a ballistic simulation engine where:
 
-## What It Does
+- drag coefficient is **not constant**
+- air density is derived from **temperature and pressure**
+- dynamic viscosity is computed using **Sutherland’s law**
+- flow regime is determined via **Reynolds number**
+- velocity is solved using an **iterative method**
 
-- Simulates ideal projectile motion from the closed-form solution
-- Simulates drag-affected motion with time-stepped numerical integration
-- Computes drag dynamically from:
-  - air temperature
-  - air pressure
-  - projectile diameter
-  - instantaneous velocity
-- Displays both ideal and drag trajectories together
-- Includes historical artillery presets from the 16th to 19th centuries
+👉 Result: significantly more realistic trajectories compared to simplified models.
 
-## Run
+---
 
-Start the local server:
+## 📊 Example: Ideal vs Realistic Trajectory
 
-```bash
-python3 main.py
+![Trajectory comparison](assets/screenshots/interactive-ballistics-simulator.png)
+
+Comparison between:
+- ideal trajectory (no air resistance)
+- realistic trajectory with drag computed from Reynolds number
+
+The realistic model shows reduced range and a different trajectory shape due to velocity-dependent drag.
+
+---
+
+## 🌐 Live Demo
+
+👉 https://funmechanics.net:8443/
+
+---
+
+## 🧠 Why this is different
+
+Most projectile simulations use a simplified drag model:
+
+```python
+Fd = k * v**2
 ```
 
-Then open:
+where the drag coefficient is constant.
 
-```text
-http://127.0.0.1:8000
-```
+This project instead computes drag dynamically based on physical principles:
 
-Optional host and port:
+- air density from **ideal gas law**
+- dynamic viscosity from **Sutherland’s law**
+- drag coefficient from **Reynolds number**
+- nonlinear coupling between velocity and drag resolved iteratively
 
-```bash
-python3 main.py --host 0.0.0.0 --port 9000
-```
+👉 Drag changes continuously with velocity and environment.
 
-## Controls
+---
 
-The simulator parameters come from the launch-control panel:
-
-- Launch angle
-- Initial velocity
-- Projectile material density
-- Air temperature
-- Air pressure
-- Projectile diameter
-- Integration time step
-
-Historical gun presets populate those same controls with gun-specific values.
-
-## Historical Gun Library
-
-The left-side gun library includes real artillery pieces from the 16th to 19th centuries with local images and hover details. Selecting a gun fills the simulator with that gun's ballistic inputs, including projectile diameter in millimeters.
-
-These presets are educational approximations. Documented shot size, projectile mass, and listed ranges or muzzle velocities were used where available. The simulator derives projectile mass from diameter and material density while still assuming a spherical projectile.
-
-## Drag Model
-
-The drag-force equation remains:
-
-```text
-Fd = 1/2 * rho * Cd * A * v^2
-```
-
-The difference is that the aerodynamic terms are now derived rather than entered directly.
+## 🔬 Physics Model
 
 ### Air Density
 
-Air density is computed from the ideal gas law:
-
-```text
 rho = p / (R * T)
-```
 
-- `T` is taken from the UI in Celsius and converted to Kelvin
-- `p` is taken from the UI in atm and converted to pascals
-- `R = 287.05 J/(kg*K)`
+### Dynamic Viscosity (Sutherland’s Law)
 
-### Dynamic Viscosity
-
-Dynamic viscosity is computed with Sutherland's law:
-
-```text
 mu(T) = mu0 * (T / T0)^(3/2) * (T0 + S) / (T + S)
-```
-
-Constants used:
-
-- `mu0 = 1.716e-5 Pa*s`
-- `T0 = 273.15 K`
-- `S = 111 K`
 
 ### Reynolds Number
 
-```text
 Re = rho * v * d / mu
-```
 
-### Sphere Drag Coefficient
+### Drag Coefficient (Sphere)
 
-The simulator uses the standard piecewise sphere correlation:
+- Re < 0.1 → Cd = 24 / Re  
+- 0.1 ≤ Re < 1000 → Cd = 24 / Re * (1 + 0.15 * Re^0.687)  
+- Re ≥ 1000 → Cd = 0.44  
 
-```text
-Cd = 24 / Re                         for Re < 0.1
-Cd = (24 / Re) * (1 + 0.15 Re^0.687) for 0.1 <= Re < 1000
-Cd = 0.44                             for Re >= 1000
-```
+### Drag Force
 
-### Cross-Sectional Area
+Fd = 0.5 * rho * v^2 * Cd * A
 
-Area is derived from projectile diameter:
+---
 
-```text
-A = pi * d^2 / 4
-```
+## ⚙️ Key Features
 
-### Iterative Step Update
+- Reynolds-number-based drag model  
+- Atmospheric model (temperature + pressure → density, viscosity)  
+- Automatic transition between flow regimes  
+- Iterative solver for velocity-dependent drag  
+- Support for low-density (near-vacuum) conditions  
+- Interactive visualization  
 
-At each drag-integration step, the simulator:
+---
 
-1. estimates speed from the current velocity
-2. computes `rho`, `mu`, `Re`, `Cd`, and drag force
-3. updates velocity
-4. applies relaxation over several internal iterations for stability
+## 🧩 Input Parameters
 
-## Metrics
+- temperature (°C)
+- pressure (atm)
+- projectile diameter (m)
+- projectile material density (kg/m³)
+- initial velocity (m/s)
 
-The UI reports:
+---
 
-- Ideal range
-- Ideal maximum height
-- Drag range
-- Drag maximum height
-- Range loss to drag
-- Time step
+## 📈 Output
 
-## Validation
+- velocity vector  
+- trajectory  
+- Reynolds number  
+- drag coefficient  
+- air density  
 
-Run the tests with:
+---
 
-```bash
-python3 -m unittest
-```
-
-Syntax check:
+## 🧪 Usage
 
 ```bash
-python3 -m py_compile main.py test_main.py
+python main.py
 ```
 
-The tests currently cover:
+---
 
-- analytical projectile-motion helpers
-- ideal gas density conversion
-- Sutherland viscosity
-- Reynolds number
-- sphere drag coefficient regimes
-- sphere area calculation
-- reference drag-stepper regression behavior for pressure, temperature, and diameter changes
+## ⚠️ Assumptions
 
-## Manual Checks
+- spherical projectile  
+- subsonic regime  
+- no wind, spin, or turbulence  
+- ideal gas approximation  
 
-Useful manual checks in the browser:
+---
 
-- Set pressure to `0.2 atm` and verify the drag trajectory moves closer to vacuum behavior.
-- Increase pressure and verify range decreases.
-- Increase projectile diameter or material density and verify the trajectory changes consistently.
-- Select historical guns and confirm the diameter shown in the hover card matches the loaded control value.
+## 📌 Key Insight
 
-## Deployment
+Drag is not constant — it depends on Reynolds number, which in turn depends on velocity and environmental conditions.  
+This creates a nonlinear system that requires iterative solving and leads to behavior not captured by simplified models.
 
-The app can run behind Caddy or any reverse proxy because the backend only serves static HTML and local asset files.
+---
 
-Example Caddy reverse proxy:
+## 🚀 Future Work
 
-```caddy
-example.com {
-    reverse_proxy 127.0.0.1:8000
-}
-```
+- altitude-dependent atmospheric model  
+- Mach number corrections  
+- non-spherical projectiles  
+- wind and turbulence  
+- higher-order numerical integration (RK4)  
+
+---
+
+## 👤 Author
+
+Igor Nikitin
