@@ -27,6 +27,8 @@ python3 main.py --host 0.0.0.0 --port 9000
 - Toggleable ideal and drag trajectories
 - Comparison view with launch point, peak markers, and impact points
 - Presets for ideal vacuum, high drag, heavy projectile, and long-range shots
+- Historical gun library with image-backed presets for real 16th to 19th century artillery pieces
+- Gun lock mode that freezes all ballistic parameters except launch angle
 - Real-time metrics for range, maximum height, flight time, and impact speed
 - Responsive single-page layout suitable for desktop and mobile widths
 

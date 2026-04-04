@@ -3,10 +3,14 @@ from __future__ import annotations
 import argparse
 import html
 import math
+import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Dict
 
 G = 9.81
+BASE_DIR = Path(__file__).resolve().parent
+ASSETS_DIR = BASE_DIR / "assets"
 
 
 def analytical_metrics(speed: float, angle_deg: float, gravity: float = G) -> Dict[str, float]:
@@ -68,8 +72,8 @@ HTML_PAGE = """<!DOCTYPE html>
       grid-template-columns: 340px minmax(0, 1fr);
       grid-template-areas:
         "header header"
-        "controls viz"
-        "notes viz";
+        "guns viz"
+        ". notes";
     }
 
     .card {
@@ -82,24 +86,24 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .hero {
       grid-area: header;
-      padding: 28px;
+      padding: 14px 20px;
       display: grid;
-      gap: 16px;
+      gap: 10px;
       grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
       align-items: end;
     }
 
     .hero h1 {
       margin: 0;
-      font-size: clamp(2rem, 4vw, 4rem);
-      line-height: 0.95;
+      font-size: clamp(1.4rem, 2.6vw, 2.4rem);
+      line-height: 0.98;
       letter-spacing: -0.05em;
     }
 
     .hero p {
       margin: 0;
       color: var(--muted);
-      font-size: 1.02rem;
+      font-size: 0.92rem;
       max-width: 58ch;
     }
 
@@ -112,25 +116,35 @@ HTML_PAGE = """<!DOCTYPE html>
     .stat {
       background: linear-gradient(180deg, rgba(255,255,255,0.65), rgba(255,255,255,0.35));
       border-radius: 18px;
-      padding: 14px;
+      padding: 10px 12px;
       border: 1px solid rgba(255,255,255,0.5);
     }
 
     .stat strong {
       display: block;
-      font-size: 1.35rem;
-      margin-top: 6px;
+      font-size: 1.05rem;
+      margin-top: 4px;
     }
 
-    .controls {
-      grid-area: controls;
+    .guns {
+      grid-area: guns;
+      position: relative;
+      z-index: 4;
       padding: 22px;
       display: grid;
       gap: 16px;
-      align-content: start;
+      align-content: stretch;
+      height: 100%;
     }
 
-    .controls h2,
+    .guns .section-stack {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+
+    .guns h2,
     .viz h2,
     .notes h2 {
       margin: 0;
@@ -141,13 +155,14 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .control-grid {
       display: grid;
-      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
 
     label {
       display: grid;
-      gap: 8px;
-      font-size: 0.95rem;
+      gap: 5px;
+      font-size: 0.82rem;
       font-weight: 700;
     }
 
@@ -186,23 +201,30 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: 10px;
     }
 
+    .section-stack {
+      display: grid;
+      gap: 16px;
+    }
+
     .toggle {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       background: rgba(255,255,255,0.7);
       border-radius: 999px;
-      padding: 8px 12px;
+      padding: 5px 9px;
       border: 1px solid var(--border);
       font-weight: 600;
+      font-size: 0.78rem;
     }
 
     button {
       border: none;
       border-radius: 999px;
-      padding: 11px 16px;
+      padding: 7px 11px;
       font: inherit;
       font-weight: 700;
+      font-size: 0.8rem;
       cursor: pointer;
       transition: transform 140ms ease, opacity 140ms ease, background 140ms ease;
     }
@@ -214,6 +236,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .viz {
       grid-area: viz;
+      position: relative;
+      z-index: 1;
       padding: 22px;
       display: grid;
       gap: 16px;
@@ -227,21 +251,75 @@ HTML_PAGE = """<!DOCTYPE html>
       border: 1px solid var(--border);
       background:
         linear-gradient(180deg, rgba(185, 215, 234, 0.95) 0%, rgba(225, 242, 251, 0.95) 48%, rgba(200, 217, 160, 0.95) 48%, rgba(183, 198, 134, 0.95) 100%);
-      min-height: 520px;
+      min-height: 400px;
+    }
+
+    .control-pop {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      z-index: 3;
+      width: min(330px, calc(100% - 36px));
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      max-height: calc(100% - 36px);
+      overflow: hidden;
+      background: rgba(255, 248, 236, 0.92);
+      border: 1px solid rgba(31, 31, 26, 0.12);
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(84, 56, 21, 0.22);
+      backdrop-filter: blur(10px);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .control-panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .control-panel-head h3 {
+      margin: 0;
+      font-size: 0.84rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .control-scroll {
+      display: grid;
+      gap: 8px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .control-scroll.hidden {
+      display: none;
     }
 
     canvas {
       display: block;
       width: 100%;
-      height: 520px;
+      height: 400px;
     }
 
     .legend {
+      position: absolute;
+      left: 18px;
+      top: 18px;
+      z-index: 2;
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      color: var(--muted);
-      font-size: 0.93rem;
+      color: rgba(31, 31, 26, 0.86);
+      font-size: 0.85rem;
+      padding: 10px 12px;
+      border-radius: 18px;
+      background: rgba(255, 248, 236, 0.84);
+      border: 1px solid rgba(31, 31, 26, 0.12);
+      box-shadow: 0 10px 26px rgba(84, 56, 21, 0.18);
+      backdrop-filter: blur(8px);
     }
 
     .legend span {
@@ -259,33 +337,34 @@ HTML_PAGE = """<!DOCTYPE html>
 
     .metric-grid {
       display: grid;
-      gap: 12px;
+      gap: 8px;
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .metric {
-      padding: 14px;
-      border-radius: 18px;
+      padding: 10px;
+      border-radius: 14px;
       background: rgba(255,255,255,0.7);
       border: 1px solid var(--border);
     }
 
     .metric .label {
       color: var(--muted);
-      font-size: 0.9rem;
-      margin-bottom: 8px;
+      font-size: 0.76rem;
+      margin-bottom: 6px;
     }
 
     .metric strong {
       display: block;
-      font-size: 1.3rem;
+      font-size: 1rem;
       line-height: 1;
     }
 
     .metric small {
       display: block;
-      margin-top: 6px;
+      margin-top: 4px;
       color: var(--muted);
+      font-size: 0.72rem;
     }
 
     .notes {
@@ -308,6 +387,155 @@ HTML_PAGE = """<!DOCTYPE html>
       margin-bottom: 6px;
     }
 
+    .lock-note,
+    .gun-card,
+    .gun-hover {
+      background: rgba(255,255,255,0.72);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+    }
+
+    .lock-note {
+      padding: 8px 10px;
+      font-size: 0.82rem;
+      line-height: 1.1;
+      border-radius: 12px;
+    }
+
+    .gun-slider-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .gun-slider-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .gun-library {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scroll-snap-type: y mandatory;
+      gap: 12px;
+      padding-right: 4px;
+      min-height: 0;
+      flex: 1 1 auto;
+    }
+
+    .gun-zone {
+      position: relative;
+      z-index: 6;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 12px;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .gun-card {
+      min-height: 132px;
+      flex: 0 0 132px;
+      padding: 8px;
+      display: block;
+      cursor: pointer;
+      scroll-snap-align: start;
+      position: relative;
+    }
+
+    .gun-card.active {
+      border-color: rgba(182, 70, 42, 0.55);
+      box-shadow: inset 0 0 0 1px rgba(182, 70, 42, 0.18);
+    }
+
+    .gun-card img,
+    .gun-hover img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 14px;
+      object-fit: cover;
+      background: rgba(0,0,0,0.06);
+    }
+
+    .gun-caption {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      padding: 6px 8px;
+      text-align: center;
+      font-size: 0.76rem;
+      color: #1f1f1a;
+      font-weight: 800;
+      border-radius: 10px;
+      background: rgba(255, 248, 236, 0.88);
+      border: 1px solid rgba(31, 31, 26, 0.1);
+      backdrop-filter: blur(6px);
+    }
+
+    .gun-copy {
+      display: grid;
+      gap: 6px;
+    }
+
+    .gun-copy h3,
+    .gun-hover h3 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+
+    .gun-specs {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .gun-hover {
+      position: absolute;
+      top: 0;
+      left: calc(100% + 12px);
+      width: min(340px, 42vw);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      background: rgba(255, 248, 236, 0.96);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
+      z-index: 5;
+    }
+
+    .gun-hover.hidden {
+      display: none;
+    }
+
+    .gun-hover-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .source-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .source-list a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .source-list a:hover {
+      text-decoration: underline;
+    }
+
     .muted {
       color: var(--muted);
     }
@@ -317,7 +545,7 @@ HTML_PAGE = """<!DOCTYPE html>
         grid-template-columns: 1fr;
         grid-template-areas:
           "header"
-          "controls"
+          "guns"
           "viz"
           "notes";
       }
@@ -334,7 +562,7 @@ HTML_PAGE = """<!DOCTYPE html>
       }
 
       .hero,
-      .controls,
+      .guns,
       .viz,
       .notes {
         border-radius: 20px;
@@ -346,10 +574,41 @@ HTML_PAGE = """<!DOCTYPE html>
         grid-template-columns: 1fr;
       }
 
+      .control-grid {
+        grid-template-columns: 1fr;
+      }
+
       .canvas-wrap,
       canvas {
-        min-height: 380px;
-        height: 380px;
+        min-height: 320px;
+        height: 320px;
+      }
+
+      .gun-library {
+        gap: 10px;
+      }
+
+      .gun-slider-actions {
+        flex-direction: row;
+      }
+
+      .gun-hover {
+        position: static;
+        width: 100%;
+      }
+
+      .control-pop {
+        top: 10px;
+        right: 10px;
+        width: calc(100% - 20px);
+        padding: 10px;
+        max-height: calc(100% - 20px);
+      }
+
+      .legend {
+        left: 10px;
+        right: 10px;
+        top: 10px;
       }
     }
   </style>
@@ -360,10 +619,6 @@ HTML_PAGE = """<!DOCTYPE html>
       <div>
         <p class="muted">Physics Education Sandbox</p>
         <h1>Interactive Ballistics Simulator</h1>
-        <p>
-          Explore how launch angle, velocity, mass, and drag reshape projectile motion.
-          Compare ideal vacuum motion against a numerical air-resistance model in real time.
-        </p>
       </div>
       <div class="stat-strip">
         <div class="stat">
@@ -381,70 +636,100 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
     </section>
 
-    <aside class="controls card">
-      <h2>Launch Controls</h2>
-      <div class="control-grid">
-        <label>
-          <span class="control-header"><span>Launch angle</span><span class="value" data-out="angle">45.0°</span></span>
-          <input id="angle" type="range" min="0" max="90" step="0.5" value="45">
-        </label>
-        <label>
-          <span class="control-header"><span>Initial velocity</span><span class="value" data-out="speed">55.0 m/s</span></span>
-          <input id="speed" type="range" min="5" max="180" step="1" value="55">
-        </label>
-        <label>
-          <span class="control-header"><span>Projectile mass</span><span class="value" data-out="mass">1.00 kg</span></span>
-          <input id="mass" type="range" min="0.1" max="20" step="0.1" value="1">
-        </label>
-        <label>
-          <span class="control-header"><span>Drag coefficient (Cd)</span><span class="value" data-out="dragCoefficient">0.47</span></span>
-          <input id="dragCoefficient" type="range" min="0.05" max="1.5" step="0.01" value="0.47">
-        </label>
-        <label>
-          <span class="control-header"><span>Air density</span><span class="value" data-out="airDensity">1.225 kg/m³</span></span>
-          <input id="airDensity" type="range" min="0" max="1.5" step="0.01" value="1.225">
-        </label>
-        <label>
-          <span class="control-header"><span>Cross-sectional area</span><span class="value" data-out="area">0.010 m²</span></span>
-          <input id="area" type="range" min="0.001" max="0.08" step="0.001" value="0.01">
-        </label>
-        <label>
-          <span class="control-header"><span>Time step</span><span class="value" data-out="dt">0.016 s</span></span>
-          <input id="dt" type="range" min="0.005" max="0.05" step="0.001" value="0.016">
-        </label>
-      </div>
-
-      <div class="toggle-row">
-        <label class="toggle"><input id="showIdeal" type="checkbox" checked> Ideal</label>
-        <label class="toggle"><input id="showDrag" type="checkbox" checked> With drag</label>
-        <label class="toggle"><input id="compareMode" type="checkbox" checked> Compare side by side</label>
-      </div>
-
-      <div class="actions">
-        <button class="primary" id="launchBtn">Launch</button>
-        <button class="secondary" id="replayBtn">Replay</button>
-        <button class="secondary" id="resetBtn">Reset</button>
-      </div>
-
-      <div>
-        <h2>Presets</h2>
-        <div class="preset-list">
-          <button class="preset" data-preset="vacuum">Ideal vacuum</button>
-          <button class="preset" data-preset="highDrag">High drag</button>
-          <button class="preset" data-preset="heavy">Heavy projectile</button>
-          <button class="preset" data-preset="longRange">Long-range shot</button>
+    <aside class="guns card">
+      <div class="section-stack">
+        <h2>Historic Gun Library</h2>
+        <div class="lock-note" id="lockNote">
+          select a real gun
+        </div>
+        <div class="gun-zone">
+          <div class="gun-slider-head">
+            <div class="muted">Browse guns</div>
+            <div class="gun-slider-actions">
+              <button class="secondary" id="gunPrevBtn">Up</button>
+              <button class="secondary" id="gunNextBtn">Down</button>
+            </div>
+          </div>
+          <div class="gun-library" id="gunLibrary"></div>
+          <div class="gun-hover hidden" id="gunHover">
+            <div class="gun-hover-head">
+              <div>
+                <h3 id="gunHoverTitle">Historic gun</h3>
+                <div class="muted" id="gunHoverSubtitle"></div>
+              </div>
+            </div>
+            <img id="gunHoverImage" alt="" loading="lazy">
+            <div class="gun-copy">
+              <div class="gun-specs" id="gunHoverSpecs"></div>
+              <div class="muted" id="gunHoverNote"></div>
+              <div class="source-list" id="gunHoverSources"></div>
+            </div>
+          </div>
         </div>
       </div>
     </aside>
 
     <section class="viz card">
-      <h2>Trajectory Visualization</h2>
-      <div class="legend">
-        <span><i style="background: var(--ideal)"></i> Ideal analytical trajectory</span>
-        <span><i style="background: var(--drag)"></i> Drag simulation trajectory</span>
-        <span><i style="background: var(--compare)"></i> Active tracer / peak markers</span>
-      </div>
       <div class="canvas-wrap">
+        <div class="control-pop">
+        <div class="control-panel-head">
+          <h3>Launch Controls</h3>
+          <button class="secondary" id="toggleControlsBtn">Hide</button>
+        </div>
+        <div class="control-scroll" id="controlScroll">
+          <div class="control-grid">
+            <label>
+              <span class="control-header"><span>Launch angle</span><span class="value" data-out="angle">45.0°</span></span>
+              <input id="angle" type="range" min="0" max="90" step="0.5" value="45">
+            </label>
+            <label>
+              <span class="control-header"><span>Initial velocity</span><span class="value" data-out="speed">55.0 m/s</span></span>
+              <input id="speed" type="range" min="5" max="180" step="1" value="55">
+            </label>
+            <label>
+              <span class="control-header"><span>Projectile mass</span><span class="value" data-out="mass">1.00 kg</span></span>
+              <input id="mass" type="range" min="0.1" max="20" step="0.1" value="1">
+            </label>
+            <label>
+              <span class="control-header"><span>Drag coefficient (Cd)</span><span class="value" data-out="dragCoefficient">0.47</span></span>
+              <input id="dragCoefficient" type="range" min="0.05" max="1.5" step="0.01" value="0.47">
+            </label>
+            <label>
+              <span class="control-header"><span>Air density</span><span class="value" data-out="airDensity">1.225 kg/m³</span></span>
+              <input id="airDensity" type="range" min="0" max="1.5" step="0.01" value="1.225">
+            </label>
+            <label>
+              <span class="control-header"><span>Cross-sectional area</span><span class="value" data-out="area">0.010 m²</span></span>
+              <input id="area" type="range" min="0.001" max="0.08" step="0.001" value="0.01">
+            </label>
+            <label>
+              <span class="control-header"><span>Time step</span><span class="value" data-out="dt">0.016 s</span></span>
+              <input id="dt" type="range" min="0.005" max="0.05" step="0.001" value="0.016">
+            </label>
+          </div>
+
+          <div class="actions">
+            <button class="primary" id="launchBtn">Launch</button>
+            <button class="secondary" id="replayBtn">Replay</button>
+            <button class="secondary" id="resetBtn">Reset</button>
+          </div>
+
+          <div class="section-stack">
+            <h3>Presets</h3>
+            <div class="preset-list">
+              <button class="preset" data-preset="vacuum">Ideal vacuum</button>
+              <button class="preset" data-preset="highDrag">High drag</button>
+              <button class="preset" data-preset="heavy">Heavy projectile</button>
+              <button class="preset" data-preset="longRange">Long-range shot</button>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="legend">
+          <span><i style="background: var(--ideal)"></i> Ideal analytical trajectory</span>
+          <span><i style="background: var(--drag)"></i> Drag simulation trajectory</span>
+          <span><i style="background: var(--compare)"></i> Active tracer / peak markers</span>
+        </div>
         <canvas id="simCanvas" width="960" height="520"></canvas>
       </div>
       <div class="metric-grid" id="metrics"></div>
@@ -468,9 +753,12 @@ HTML_PAGE = """<!DOCTYPE html>
         <strong>Validation cue</strong>
         <span class="muted">Set air density to zero or disable drag to make the simulated path collapse toward the analytical ideal solution.</span>
       </div>
+      <div class="note">
+        <strong>Historical preset caveat</strong>
+        <span class="muted">Gun presets use documented bore, shot mass, and listed range or muzzle velocity. Drag coefficient and projectile area are simplified simulation inputs, and the Gribeauval launch speed is explicitly inferred from its reported maximum range.</span>
+      </div>
     </aside>
   </main>
-
   <script>
     const defaults = {
       angle: 45,
@@ -479,17 +767,14 @@ HTML_PAGE = """<!DOCTYPE html>
       dragCoefficient: 0.47,
       airDensity: 1.225,
       area: 0.01,
-      dt: 0.016,
-      showIdeal: true,
-      showDrag: true,
-      compareMode: true
+      dt: 0.016
     };
 
     const presets = {
-      vacuum: { angle: 45, speed: 50, mass: 1, dragCoefficient: 0.47, airDensity: 0, area: 0.01, dt: 0.016, showIdeal: true, showDrag: true, compareMode: true },
-      highDrag: { angle: 42, speed: 48, mass: 0.45, dragCoefficient: 1.2, airDensity: 1.225, area: 0.045, dt: 0.012, showIdeal: true, showDrag: true, compareMode: true },
-      heavy: { angle: 45, speed: 55, mass: 8, dragCoefficient: 0.35, airDensity: 1.225, area: 0.012, dt: 0.016, showIdeal: true, showDrag: true, compareMode: true },
-      longRange: { angle: 34, speed: 120, mass: 5, dragCoefficient: 0.2, airDensity: 1.0, area: 0.008, dt: 0.01, showIdeal: true, showDrag: true, compareMode: true }
+      vacuum: { angle: 45, speed: 50, mass: 1, dragCoefficient: 0.47, airDensity: 0, area: 0.01, dt: 0.016 },
+      highDrag: { angle: 42, speed: 48, mass: 0.45, dragCoefficient: 1.2, airDensity: 1.225, area: 0.045, dt: 0.012 },
+      heavy: { angle: 45, speed: 55, mass: 8, dragCoefficient: 0.35, airDensity: 1.225, area: 0.012, dt: 0.016 },
+      longRange: { angle: 34, speed: 120, mass: 5, dragCoefficient: 0.2, airDensity: 1.0, area: 0.008, dt: 0.01 }
     };
 
     const formatters = {
@@ -508,6 +793,19 @@ HTML_PAGE = """<!DOCTYPE html>
     const launchBtn = document.getElementById("launchBtn");
     const replayBtn = document.getElementById("replayBtn");
     const resetBtn = document.getElementById("resetBtn");
+    const toggleControlsBtn = document.getElementById("toggleControlsBtn");
+    const gunPrevBtn = document.getElementById("gunPrevBtn");
+    const gunNextBtn = document.getElementById("gunNextBtn");
+    const controlScroll = document.getElementById("controlScroll");
+    const gunLibraryEl = document.getElementById("gunLibrary");
+    const lockNoteEl = document.getElementById("lockNote");
+    const gunHover = document.getElementById("gunHover");
+    const gunHoverTitle = document.getElementById("gunHoverTitle");
+    const gunHoverSubtitle = document.getElementById("gunHoverSubtitle");
+    const gunHoverImage = document.getElementById("gunHoverImage");
+    const gunHoverSpecs = document.getElementById("gunHoverSpecs");
+    const gunHoverNote = document.getElementById("gunHoverNote");
+    const gunHoverSources = document.getElementById("gunHoverSources");
 
     const controls = {
       angle: document.getElementById("angle"),
@@ -516,19 +814,209 @@ HTML_PAGE = """<!DOCTYPE html>
       dragCoefficient: document.getElementById("dragCoefficient"),
       airDensity: document.getElementById("airDensity"),
       area: document.getElementById("area"),
-      dt: document.getElementById("dt"),
-      showIdeal: document.getElementById("showIdeal"),
-      showDrag: document.getElementById("showDrag"),
-      compareMode: document.getElementById("compareMode"),
+      dt: document.getElementById("dt")
+    };
+
+    const historicalGuns = {
+      basilisk: {
+        name: "Queen Elizabeth's Pocket Pistol",
+        subtitle: "Holy Roman Empire / England, 1544",
+        image: "/assets/guns/queen-elizabeths-pocket-pistol.jpg",
+        imageAlt: "Queen Elizabeth's Pocket Pistol at Dover Castle",
+        imagePosition: "center center",
+        caliber: "4.75 in (121 mm)",
+        projectile: "10 lb shot (4.54 kg)",
+        muzzleVelocity: "Estimated 134 m/s",
+        range: "1,829 m test range",
+        service: "Tudor coastal artillery",
+        note: "This giant basilisk survives at Dover Castle. The simulator launch speed is inferred from the reported shot distance rather than a documented muzzle-velocity figure.",
+        params: { angle: 16, speed: 134, mass: 4.54, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0115, dt: 0.02 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Queen_Elizabeth%27s_Pocket_Pistol" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Queen_Elizabeth%27s_Pocket_Pistol.JPG" }
+        ]
+      },
+      culverin: {
+        name: "Culverin",
+        subtitle: "France / England, 16th century",
+        image: "/assets/guns/korean-culverin.jpg",
+        imageAlt: "Korean culverin",
+        imagePosition: "center center",
+        caliber: "5.5 in (140 mm)",
+        projectile: "17 lb shot (7.71 kg)",
+        muzzleVelocity: "408 m/s",
+        range: "Over 450 m at low elevation",
+        service: "Renaissance field and siege artillery",
+        note: "The speed figure comes from tests of a modern replica of an extraordinary culverin. Shot weight varied by pattern, so this preset uses a mid-range historical ball mass.",
+        params: { angle: 9, speed: 408, mass: 7.71, dragCoefficient: 0.43, airDensity: 1.225, area: 0.0154, dt: 0.012 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Culverin" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Korean_culverin.jpg" }
+        ]
+      },
+      demiCulverin: {
+        name: "Demi-culverin",
+        subtitle: "England / Europe, late 16th century",
+        image: "/assets/guns/demi-culverin-mary-rose.jpg",
+        imageAlt: "Demi-culverin from the Mary Rose collection",
+        imagePosition: "center center",
+        caliber: "4.0 in (102 mm)",
+        projectile: "8 lb shot (3.63 kg)",
+        muzzleVelocity: "Modeled 145 m/s",
+        range: "549 m effective range",
+        service: "Naval and field artillery",
+        note: "The article provides shot class and effective range but not muzzle velocity. The simulator uses a conservative modeled launch speed consistent with a lighter long gun sitting between a saker and a culverin.",
+        params: { angle: 14, speed: 145, mass: 3.63, dragCoefficient: 0.45, airDensity: 1.225, area: 0.0082, dt: 0.016 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-culverin" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Demi_Culverin,_Mary_Rose_-_55130506883.jpg" }
+        ]
+      },
+      saker: {
+        name: "Saker",
+        subtitle: "England, early 16th century",
+        image: "/assets/guns/english-saker-fort-nelson.jpg",
+        imageAlt: "English saker at Fort Nelson",
+        imagePosition: "center center",
+        caliber: "3.25 in (83 mm)",
+        projectile: "5.25 lb shot (2.38 kg)",
+        muzzleVelocity: "Estimated 164 m/s",
+        range: "2,743 m maximum range",
+        service: "Tudor and Stuart artillery",
+        note: "The simulator launch speed is inferred from the reported maximum range. Real service loads varied substantially across foundries and periods.",
+        params: { angle: 15, speed: 164, mass: 2.38, dragCoefficient: 0.46, airDensity: 1.225, area: 0.0054, dt: 0.016 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Saker" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker,_Used_by_Chinese_and_Vietnamese,_Fort_Nelson,_Hampshire.jpg" }
+        ]
+      },
+      falconet: {
+        name: "Falconet",
+        subtitle: "Europe, 16th to 17th century",
+        image: "/assets/guns/falconet-wrought-iron-17th-century.jpg",
+        imageAlt: "Wrought-iron falconet from the 17th century",
+        imagePosition: "center center",
+        caliber: "2.0 in (51 mm)",
+        projectile: "1 lb shot (0.45 kg)",
+        muzzleVelocity: "Estimated 122 m/s",
+        range: "1,524 m maximum range",
+        service: "Light field and fortress artillery",
+        note: "This light piece is modeled from its reported maximum range rather than a preserved firing table, so the simulator value is an educational approximation.",
+        params: { angle: 17, speed: 122, mass: 0.45, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0020, dt: 0.018 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Falconet" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Falconet_wrought_iron_17th_century_(16424842933).jpg" }
+        ]
+      },
+      demiCannon: {
+        name: "Demi-cannon",
+        subtitle: "England, early 17th century",
+        image: "/assets/guns/32-pounder-naval-cannon-raleigh.jpg",
+        imageAlt: "Large iron naval cannon used as a representative demi-cannon image",
+        imagePosition: "center center",
+        caliber: "6.25 in (159 mm)",
+        projectile: "32 lb shot (14.5 kg)",
+        muzzleVelocity: "Modeled 95 m/s",
+        range: "488 m effective range",
+        service: "Naval broadside artillery",
+        note: "The article gives shot class and effective range rather than muzzle velocity. The simulator uses a conservative modeled launch speed and a representative heavy naval gun image.",
+        params: { angle: 11, speed: 95, mass: 14.5, dragCoefficient: 0.44, airDensity: 1.225, area: 0.0198, dt: 0.02 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-cannon" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:32-pounder_Naval_Cannon_(Raleigh,_NC)_-_DSC05867.JPG" }
+        ]
+      },
+      gribeauval: {
+        name: "Canon de 12 Gribeauval",
+        subtitle: "France, 1765",
+        image: "/assets/guns/gribeauval-cannon-de-12.jpg",
+        imageAlt: "Canon de 12 Gribeauval at Les Invalides",
+        imagePosition: "center center",
+        caliber: "121 mm",
+        projectile: "12 French livres round shot (~5.88 kg)",
+        muzzleVelocity: "Estimated 133 m/s",
+        range: "1,800 m max range",
+        service: "American Revolutionary War, Napoleonic Wars",
+        note: "The source used here gives range but not muzzle velocity. The simulator launch speed is inferred from the reported 1,800 m maximum range under an idealized 45° estimate.",
+        params: { angle: 18, speed: 133, mass: 5.88, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0115, dt: 0.02 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Canon_de_12_Gribeauval" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gribeauval_cannon_de_12_An_2_de_la_Republique.jpg" }
+        ]
+      },
+      napoleon: {
+        name: "M1857 12-pounder Napoleon",
+        subtitle: "United States, 1857",
+        image: "/assets/guns/gettysburg-12-pounder-napoleon.jpg",
+        imageAlt: "M1857 12-pounder Napoleon at Gettysburg",
+        imagePosition: "center center",
+        caliber: "4.62 in (117 mm)",
+        projectile: "12 lb round shot (5.44 kg)",
+        muzzleVelocity: "439 m/s",
+        range: "1,480 m at 5°",
+        service: "American Civil War",
+        note: "This is a smoothbore gun-howitzer. The preset keeps the round-shot drag model used elsewhere in the simulator.",
+        params: { angle: 12, speed: 439, mass: 5.44, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0108, dt: 0.012 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/M1857_12-pounder_Napoleon" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gettysburg,_12-pounder_Napoleon.jpg" }
+        ]
+      },
+      ordnance: {
+        name: "3-inch Ordnance Rifle",
+        subtitle: "United States, 1861",
+        image: "/assets/guns/cw-arty-3in-ordnance-front.jpg",
+        imageAlt: "3-inch ordnance rifle at Gettysburg",
+        imagePosition: "center center",
+        caliber: "3.0 in (76 mm)",
+        projectile: "9.5 lb shell (4.3 kg)",
+        muzzleVelocity: "370 m/s",
+        range: "1,673 m at 5°",
+        service: "American Civil War",
+        note: "This preset represents a rifled shell rather than a smooth round shot, so the drag coefficient is modeled lower.",
+        params: { angle: 10, speed: 370, mass: 4.3, dragCoefficient: 0.32, airDensity: 1.225, area: 0.0045, dt: 0.01 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/3-inch_ordnance_rifle" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:CW_Arty_3in_Ordnance_front.jpg" }
+        ]
+      },
+      armstrong: {
+        name: "RBL 12-pounder 8 cwt Armstrong gun",
+        subtitle: "United Kingdom, 1859",
+        image: "/assets/guns/awm-armstrong-gun-1.jpg",
+        imageAlt: "RBL 12-pounder Armstrong gun at the Australian War Memorial",
+        imagePosition: "center center",
+        caliber: "3.0 in (76.2 mm)",
+        projectile: "11 lb 4 oz common shell (5.10 kg)",
+        muzzleVelocity: "378 m/s",
+        range: "3,109 m",
+        service: "Second Opium War, New Zealand Wars",
+        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight and a lower drag coefficient than smoothbore round shot.",
+        params: { angle: 8, speed: 378, mass: 5.1, dragCoefficient: 0.32, airDensity: 1.225, area: 0.0046, dt: 0.01 },
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/RBL_12-pounder_8_cwt_Armstrong_gun" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:AWM-Armstrong-gun-1.jpg" }
+        ]
+      }
     };
 
     const state = {
       params: { ...defaults },
       ideal: null,
       drag: null,
+      currentGun: null,
+      hoveredGun: null,
+      controlsCollapsed: false,
       animationStart: 0,
       animating: false
     };
+
+    function setControlsCollapsed(collapsed) {
+      state.controlsCollapsed = collapsed;
+      controlScroll.classList.toggle("hidden", collapsed);
+      toggleControlsBtn.textContent = collapsed ? "Show" : "Hide";
+      toggleControlsBtn.setAttribute("aria-expanded", String(!collapsed));
+    }
 
     function readParams() {
       return {
@@ -538,10 +1026,7 @@ HTML_PAGE = """<!DOCTYPE html>
         dragCoefficient: Number(controls.dragCoefficient.value),
         airDensity: Number(controls.airDensity.value),
         area: Number(controls.area.value),
-        dt: Number(controls.dt.value),
-        showIdeal: controls.showIdeal.checked,
-        showDrag: controls.showDrag.checked,
-        compareMode: controls.compareMode.checked
+        dt: Number(controls.dt.value)
       };
     }
 
@@ -560,6 +1045,82 @@ HTML_PAGE = """<!DOCTYPE html>
       updateLabels();
     }
 
+    function setGunMode(gunKey) {
+      state.currentGun = gunKey;
+      syncControls(historicalGuns[gunKey].params);
+      applyGunMode();
+    }
+
+    function clearGunMode() {
+      state.currentGun = null;
+      applyGunMode();
+    }
+
+    function applyGunMode() {
+      const inGunMode = Boolean(state.currentGun);
+      lockNoteEl.innerHTML = inGunMode
+        ? `<strong>${historicalGuns[state.currentGun].name}</strong>`
+        : `select a real gun`;
+      renderGunLibrary();
+    }
+
+    function renderGunLibrary() {
+      gunLibraryEl.innerHTML = Object.entries(historicalGuns).map(([key, gun]) => `
+        <article class="gun-card ${state.currentGun === key ? "active" : ""}" data-gun="${key}">
+          <img src="${gun.image}" alt="${gun.imageAlt}" loading="lazy" style="object-position: ${gun.imagePosition || "center center"}; transform: scale(${gun.imageScale || 1});">
+          <div class="gun-caption">${gun.name}</div>
+        </article>
+      `).join("");
+
+      gunLibraryEl.querySelectorAll("[data-gun]").forEach((card) => {
+        card.addEventListener("mouseenter", () => {
+          showGunHover(card.dataset.gun);
+        });
+        card.addEventListener("focusin", () => {
+          showGunHover(card.dataset.gun);
+        });
+        card.addEventListener("mouseleave", () => {
+          hideGunHover();
+        });
+        card.addEventListener("click", () => {
+          setGunMode(card.dataset.gun);
+          launch();
+        });
+      });
+    }
+
+    function scrollGunLibrary(direction) {
+      const sampleCard = gunLibraryEl.querySelector(".gun-card");
+      const step = sampleCard ? sampleCard.getBoundingClientRect().height + 12 : 144;
+      gunLibraryEl.scrollBy({ top: direction * step, behavior: "smooth" });
+    }
+
+    function showGunHover(gunKey) {
+      state.hoveredGun = gunKey;
+      const gun = historicalGuns[gunKey];
+      gunHoverTitle.textContent = gun.name;
+      gunHoverSubtitle.textContent = gun.subtitle;
+      gunHoverImage.src = gun.image;
+      gunHoverImage.alt = gun.imageAlt;
+      gunHoverImage.style.objectPosition = gun.imagePosition || "center center";
+      gunHoverImage.style.transform = `scale(${gun.imageScale || 1})`;
+      gunHoverSpecs.innerHTML = `
+        <span><strong>Caliber:</strong> ${gun.caliber}</span>
+        <span><strong>Projectile:</strong> ${gun.projectile}</span>
+        <span><strong>Muzzle velocity:</strong> ${gun.muzzleVelocity}</span>
+        <span><strong>Service:</strong> ${gun.service}</span>
+        <span><strong>Reported range:</strong> ${gun.range}</span>
+      `;
+      gunHoverNote.textContent = gun.note;
+      gunHoverSources.innerHTML = gun.sources.map((source) => `<a href="${source.url}" target="_blank" rel="noreferrer">${source.label}</a>`).join("");
+      gunHover.classList.remove("hidden");
+    }
+
+    function hideGunHover() {
+      state.hoveredGun = null;
+      gunHover.classList.add("hidden");
+    }
+
     function updateLabels() {
       state.params = readParams();
       document.querySelectorAll("[data-out]").forEach((node) => {
@@ -568,7 +1129,7 @@ HTML_PAGE = """<!DOCTYPE html>
       });
       document.getElementById("hero-angle").textContent = formatters.angle(state.params.angle);
       document.getElementById("hero-speed").textContent = formatters.speed(state.params.speed);
-      document.getElementById("hero-mode").textContent = state.params.compareMode ? "Compare" : "Single";
+      document.getElementById("hero-mode").textContent = state.currentGun ? historicalGuns[state.currentGun].name : "Ideal + Drag";
     }
 
     function simulateIdeal(params) {
@@ -673,14 +1234,10 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function renderMetrics() {
       const rows = [];
-      if (state.params.showIdeal) {
-        rows.push(metricCard("Ideal range", state.ideal.metrics.range, "m", `Time ${state.ideal.metrics.flightTime.toFixed(2)} s`));
-        rows.push(metricCard("Ideal max height", state.ideal.metrics.maxHeight, "m", `Impact speed ${state.ideal.metrics.finalSpeed.toFixed(2)} m/s`));
-      }
-      if (state.params.showDrag) {
-        rows.push(metricCard("Drag range", state.drag.metrics.range, "m", `Time ${state.drag.metrics.flightTime.toFixed(2)} s`));
-        rows.push(metricCard("Drag max height", state.drag.metrics.maxHeight, "m", `Impact speed ${state.drag.metrics.finalSpeed.toFixed(2)} m/s`));
-      }
+      rows.push(metricCard("Ideal range", state.ideal.metrics.range, "m", `Time ${state.ideal.metrics.flightTime.toFixed(2)} s`));
+      rows.push(metricCard("Ideal max height", state.ideal.metrics.maxHeight, "m", `Impact speed ${state.ideal.metrics.finalSpeed.toFixed(2)} m/s`));
+      rows.push(metricCard("Drag range", state.drag.metrics.range, "m", `Time ${state.drag.metrics.flightTime.toFixed(2)} s`));
+      rows.push(metricCard("Drag max height", state.drag.metrics.maxHeight, "m", `Impact speed ${state.drag.metrics.finalSpeed.toFixed(2)} m/s`));
       const deltaRange = state.ideal.metrics.range - state.drag.metrics.range;
       const angleHint = state.params.airDensity > 0 ? "Lower angles often win with drag." : "Vacuum restores the 45° symmetry.";
       rows.push(metricCard("Range loss to drag", deltaRange, "m", angleHint));
@@ -700,31 +1257,38 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function worldBounds() {
       const visible = [];
-      if (state.params.showIdeal) {
-        visible.push(...state.ideal.points);
-      }
-      if (state.params.showDrag) {
-        visible.push(...state.drag.points);
-      }
+      visible.push(...state.ideal.points);
+      visible.push(...state.drag.points);
       const maxX = Math.max(1, ...visible.map((p) => p.x));
       const maxY = Math.max(1, ...visible.map((p) => p.y));
       return { maxX: maxX * 1.08, maxY: maxY * 1.15 };
     }
 
-    function toCanvas(x, y, bounds) {
+    function getPlotGeometry(bounds) {
       const padLeft = 64;
       const padRight = 24;
       const padTop = 24;
       const padBottom = 44;
-      const width = canvas.width - padLeft - padRight;
-      const height = canvas.height - padTop - padBottom;
+      const plotWidth = canvas.width - padLeft - padRight;
+      const plotHeight = canvas.height - padTop - padBottom;
+      const scale = Math.min(plotWidth / bounds.maxX, plotHeight / bounds.maxY);
+      const usedWidth = bounds.maxX * scale;
+      const usedHeight = bounds.maxY * scale;
+      const offsetX = padLeft + ((plotWidth - usedWidth) / 2);
+      const offsetY = canvas.height - padBottom;
+      return { padLeft, padRight, padTop, padBottom, plotWidth, plotHeight, scale, offsetX, offsetY, usedWidth, usedHeight };
+    }
+
+    function toCanvas(x, y, bounds) {
+      const geometry = getPlotGeometry(bounds);
       return {
-        x: padLeft + (x / bounds.maxX) * width,
-        y: canvas.height - padBottom - (y / bounds.maxY) * height
+        x: geometry.offsetX + (x * geometry.scale),
+        y: geometry.offsetY - (y * geometry.scale)
       };
     }
 
     function drawGrid(bounds) {
+      const geometry = getPlotGeometry(bounds);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 1;
       ctx.strokeStyle = "rgba(0,0,0,0.08)";
@@ -732,34 +1296,34 @@ HTML_PAGE = """<!DOCTYPE html>
       ctx.font = "12px Trebuchet MS";
 
       for (let i = 0; i <= 6; i += 1) {
-        const x = (canvas.width - 88) * (i / 6) + 64;
-        ctx.beginPath();
-        ctx.moveTo(x, 24);
-        ctx.lineTo(x, canvas.height - 44);
-        ctx.stroke();
         const worldX = (bounds.maxX * i) / 6;
+        const x = geometry.offsetX + (worldX * geometry.scale);
+        ctx.beginPath();
+        ctx.moveTo(x, geometry.padTop);
+        ctx.lineTo(x, geometry.offsetY);
+        ctx.stroke();
         ctx.fillText(`${worldX.toFixed(0)} m`, x - 16, canvas.height - 18);
       }
 
       for (let i = 0; i <= 5; i += 1) {
-        const y = (canvas.height - 68) * (i / 5) + 24;
-        ctx.beginPath();
-        ctx.moveTo(64, y);
-        ctx.lineTo(canvas.width - 24, y);
-        ctx.stroke();
         const worldY = bounds.maxY - (bounds.maxY * i) / 5;
+        const y = geometry.offsetY - (worldY * geometry.scale);
+        ctx.beginPath();
+        ctx.moveTo(geometry.offsetX, y);
+        ctx.lineTo(geometry.offsetX + geometry.usedWidth, y);
+        ctx.stroke();
         ctx.fillText(`${worldY.toFixed(0)} m`, 12, y + 4);
       }
 
       ctx.strokeStyle = "rgba(31,31,26,0.24)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(64, canvas.height - 44);
-      ctx.lineTo(canvas.width - 24, canvas.height - 44);
+      ctx.moveTo(geometry.offsetX, geometry.offsetY);
+      ctx.lineTo(geometry.offsetX + geometry.usedWidth, geometry.offsetY);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(64, canvas.height - 44);
-      ctx.lineTo(64, 24);
+      ctx.moveTo(geometry.offsetX, geometry.offsetY);
+      ctx.lineTo(geometry.offsetX, geometry.offsetY - geometry.usedHeight);
       ctx.stroke();
     }
 
@@ -796,23 +1360,52 @@ HTML_PAGE = """<!DOCTYPE html>
       ctx.fillText(label, p.x + 8, p.y - 8);
     }
 
+    function drawLaunchAngle(bounds) {
+      const origin = toCanvas(0, 0, bounds);
+      const angleRad = state.params.angle * Math.PI / 180;
+      const radius = 34;
+
+      ctx.strokeStyle = "rgba(31,31,26,0.6)";
+      ctx.lineWidth = 1.5;
+
+      ctx.beginPath();
+      ctx.moveTo(origin.x, origin.y);
+      ctx.lineTo(origin.x + radius + 12, origin.y);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(origin.x, origin.y);
+      ctx.lineTo(origin.x + Math.cos(angleRad) * (radius + 12), origin.y - Math.sin(angleRad) * (radius + 12));
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(origin.x, origin.y, radius, 0, -angleRad, true);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(31,31,26,0.86)";
+      const labelRadius = radius + 18;
+      const labelAngle = angleRad / 2;
+      ctx.fillText(
+        `${state.params.angle.toFixed(1)}°`,
+        origin.x + Math.cos(labelAngle) * labelRadius - 8,
+        origin.y - Math.sin(labelAngle) * labelRadius - 4
+      );
+    }
+
     function drawScene(progress) {
       const bounds = worldBounds();
       drawGrid(bounds);
 
-      if (state.params.showIdeal) {
-        drawPath(state.ideal.points, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), bounds, progress);
-        drawMarker(state.ideal.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim(), "Ideal peak");
-        drawMarker({ x: state.ideal.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), "Ideal impact");
-      }
+      drawPath(state.ideal.points, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), bounds, progress);
+      drawMarker(state.ideal.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim(), "Ideal peak");
+      drawMarker({ x: state.ideal.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), "Ideal impact");
 
-      if (state.params.showDrag) {
-        drawPath(state.drag.points, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim(), bounds, progress);
-        drawMarker(state.drag.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim(), "Drag peak");
-        drawMarker({ x: state.drag.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim(), "Drag impact");
-      }
+      drawPath(state.drag.points, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim(), bounds, progress);
+      drawMarker(state.drag.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim(), "Drag peak");
+      drawMarker({ x: state.drag.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim(), "Drag impact");
 
       const origin = toCanvas(0, 0, bounds);
+      drawLaunchAngle(bounds);
       ctx.fillStyle = "#111";
       ctx.beginPath();
       ctx.arc(origin.x, origin.y, 5, 0, Math.PI * 2);
@@ -857,18 +1450,32 @@ HTML_PAGE = """<!DOCTYPE html>
       requestAnimationFrame(animate);
     });
     resetBtn.addEventListener("click", () => {
+      clearGunMode();
       syncControls(defaults);
       recompute();
     });
-
+    toggleControlsBtn.addEventListener("click", () => {
+      setControlsCollapsed(!state.controlsCollapsed);
+    });
+    gunPrevBtn.addEventListener("click", () => {
+      scrollGunLibrary(-1);
+    });
+    gunNextBtn.addEventListener("click", () => {
+      scrollGunLibrary(1);
+    });
     document.querySelectorAll("[data-preset]").forEach((button) => {
       button.addEventListener("click", () => {
+        clearGunMode();
         syncControls(presets[button.dataset.preset]);
         launch();
       });
     });
 
+    renderGunLibrary();
+    hideGunHover();
+    setControlsCollapsed(false);
     syncControls(defaults);
+    applyGunMode();
     recompute();
     launch();
   </script>
@@ -878,6 +1485,26 @@ HTML_PAGE = """<!DOCTYPE html>
 
 
 class SimulatorHandler(BaseHTTPRequestHandler):
+    def _send_asset(self) -> bool:
+        if not self.path.startswith("/assets/"):
+            return False
+
+        relative = self.path.removeprefix("/assets/")
+        asset_path = (ASSETS_DIR / relative).resolve()
+        if not str(asset_path).startswith(str(ASSETS_DIR.resolve())) or not asset_path.is_file():
+            self.send_error(404, "Not Found")
+            return True
+
+        content_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
+        content = asset_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(content)
+        return True
+
     def _send_index_headers(self) -> bytes | None:
         if self.path not in ("/", "/index.html"):
             self.send_error(404, "Not Found")
@@ -891,9 +1518,13 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         return content
 
     def do_HEAD(self) -> None:
+        if self._send_asset():
+            return
         self._send_index_headers()
 
     def do_GET(self) -> None:
+        if self._send_asset():
+            return
         content = self._send_index_headers()
         if content is None:
             return
