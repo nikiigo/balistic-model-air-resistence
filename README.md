@@ -12,7 +12,7 @@ https://funmechanics.net:8443/
 
 - draws ideal and drag trajectories side by side on the same graph
 - recalculates the shot in real time as the controls change
-- lets users explore historical artillery presets from the 16th to 19th centuries
+- lets users explore historical launcher presets spanning siege engines and artillery
 - shows core flight metrics for ideal and drag cases
 - includes short educational notes about drag, optimal angle, and model assumptions
 
@@ -29,6 +29,8 @@ The simulator UI currently exposes:
 - projectile diameter
 - integration time step
 
+The air-pressure control is limited to `0.001 atm` through `1.2 atm` because the current drag correlations are not treated as valid below that floor.
+
 Material density also has quick shortcuts:
 
 - `S` stone
@@ -36,12 +38,15 @@ Material density also has quick shortcuts:
 - `B` bronze
 - `U` uranium
 
-## Historical Gun Library
+## Historical Launcher Library
 
-The left-side gun library includes real artillery pieces with images, descriptive notes, and preset parameters. Selecting a gun applies its documented or inferred ballistic profile and switches the graph to a stable scale for that gun.
+The left-side historic launcher library includes siege engines and artillery pieces with images, descriptive notes, and preset parameters. Selecting a launcher applies its documented or inferred ballistic profile and switches the graph to a stable scale for that launcher.
 
 Included presets cover:
 
+- Counterweight trebuchet
+- Mangonel / traction catapult
+- Ballista
 - Queen Elizabeth's Pocket Pistol
 - Culverin extraordinary
 - Demi-culverin
@@ -56,7 +61,7 @@ Included presets cover:
 - 24-pounder long gun
 - Paixhans gun
 
-The historical presets are educational approximations. Some guns used rifled shells or lack directly documented muzzle velocity data, so the simulator uses either a spherical round-shot model or a simplified nonspherical shell model depending on the preset.
+The historical presets are educational approximations. Some launchers lack directly documented release velocity data, so the simulator uses either a spherical shot model or a simplified nonspherical projectile model depending on the preset.
 
 ## Physics Model
 
@@ -68,12 +73,17 @@ But the aerodynamic terms are derived dynamically:
 
 - air density from the ideal gas law
 - dynamic viscosity from Sutherland's law
+- speed of sound from the ideal-gas relation for air
+- Mach number from instantaneous projectile speed and local speed of sound
 - Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
-- drag coefficient from a piecewise sphere correlation for round shot and a nonspherical shell correlation for elongated shell presets
+- base drag coefficient from a piecewise sphere `Cd(Re)` correlation for round shot and a nonspherical `Cd(Re, sphericity)` correlation for elongated shell-like projectiles
+- an approximate Mach-aware compressibility multiplier applied on top of that base drag coefficient for high-speed flow
 - projectile area from diameter
 - projectile mass from material density and a shape-aware projectile volume approximation
 
-At each integration step, the drag solver iterates the velocity update several times to account for the coupling between speed, Reynolds number, drag coefficient, and drag force.
+The flight model is a 2D point-mass model in horizontal distance and height.
+
+At each integration step, the drag solver advances the trajectory with a classical fourth-order Runge-Kutta (RK4) method.
 
 ## Output Metrics
 
@@ -88,15 +98,19 @@ The current UI reports:
 
 The graph also marks the peak and impact points for ideal and drag trajectories, shows the launch angle at the origin, and includes:
 
-- header velocity indicators for ideal and drag impact speed
-- a preset indicator showing the active gun or `Manual setup`
+- a header velocity indicator for drag impact speed
+- header flight-time indicators for ideal and drag solutions
+- a header Reynolds-number indicator for the drag solution at impact
+- a preset indicator showing the active launcher or `Manual setup`
 - a header-level scale toggle with `Stable` and `Fit shot` modes
 
 ## Assumptions and Limits
 
+- 2D planar point-mass motion only
 - round shot uses a spherical projectile model
 - shell presets use a simplified elongated-projectile drag model
-- subsonic flow only
+- pressure is clamped to a minimum supported value of `0.001 atm`
+- compressibility is handled with an approximate Mach-aware drag correction, not a fitted `Cd(Re, Ma)` table or a full transonic/supersonic aerodynamic model
 - no wind
 - no spin or Magnus effect
 - no terrain modeling
@@ -136,26 +150,27 @@ Useful manual checks:
 
 - change angle and confirm the trajectory is recomputed rather than only visually rescaled
 - switch projectile shape between `Round shot` and `Shell` in custom mode and confirm the trajectory changes
-- set pressure to `0 atm` and verify drag behavior collapses toward the ideal case
-- select a historical gun and confirm the graph switches to that gun's stable scale
+- set pressure to `0.001 atm` and verify drag is reduced relative to standard pressure without collapsing fully to the ideal case
+- select a historical launcher and confirm the graph switches to that launcher's stable scale
 - switch between `Stable` and `Fit shot` in the header and confirm the graph frame changes without changing the underlying trajectory
-- edit a control after selecting a gun and confirm the gun stays selected but is marked as customized
+- edit a control after selecting a launcher and confirm the launcher stays selected but is marked as customized
 - resize the browser window and confirm layout and graph remain usable
 
 ## Project Structure
 
 - [main.py](main.py): HTTP server, HTML, CSS, JavaScript, and Python physics helpers
 - [test_main.py](test_main.py): analytical and aerodynamic regression tests
-- [assets/guns](assets/guns): bundled historical gun images used by the local library
+- [assets/guns](assets/guns): bundled historical launcher images used by the local library
 - [assets/screenshots](assets/screenshots): README screenshot assets
 
 ## Future Work
 
 - altitude-dependent atmosphere
-- Mach-number corrections
+- sphere drag tables fitted directly over `Re` and `Ma`
+- better shell-specific aerodynamic data or ballistic-coefficient models
 - non-spherical projectiles
 - wind and turbulence
-- higher-order integration
+- adaptive time stepping
 - native Android port
 
 ## Author
