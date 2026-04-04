@@ -954,16 +954,6 @@ HTML_PAGE = """<!DOCTYPE html>
             <button class="secondary" id="replayBtn">Replay</button>
             <button class="secondary" id="resetBtn">Reset</button>
           </div>
-
-          <div class="section-stack">
-            <h3>Presets</h3>
-            <div class="preset-list">
-              <button class="preset" data-preset="vacuum">Ideal vacuum</button>
-              <button class="preset" data-preset="highDrag">High drag</button>
-              <button class="preset" data-preset="heavy">Heavy projectile</button>
-              <button class="preset" data-preset="longRange">Long-range shot</button>
-            </div>
-          </div>
         </div>
         </div>
         <div class="legend">
@@ -1874,13 +1864,6 @@ HTML_PAGE = """<!DOCTYPE html>
     });
     toggleControlsBtn.addEventListener("click", () => {
       setControlsCollapsed(!state.controlsCollapsed);
-    });
-    document.querySelectorAll("[data-preset]").forEach((button) => {
-      button.addEventListener("click", () => {
-        clearGunMode();
-        syncControls(presets[button.dataset.preset]);
-        launch();
-      });
     });
     document.querySelectorAll("[data-density]").forEach((button) => {
       button.addEventListener("click", () => {
