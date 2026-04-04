@@ -1757,14 +1757,12 @@ HTML_PAGE = """<!DOCTYPE html>
       ctx.fill();
     }
 
-    function drawMarker(point, bounds, color, label) {
+    function drawMarker(point, bounds, color) {
       const p = toCanvas(point.x, point.y, bounds);
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "rgba(31,31,26,0.86)";
-      ctx.fillText(label, p.x + 8, p.y - 8);
     }
 
     function drawLaunchAngle(bounds) {
@@ -1806,12 +1804,12 @@ HTML_PAGE = """<!DOCTYPE html>
       drawGrid(bounds);
 
       drawPath(state.ideal.points, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), bounds, progress);
-      drawMarker(state.ideal.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim(), "Ideal peak");
-      drawMarker({ x: state.ideal.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim(), "Ideal impact");
+      drawMarker(state.ideal.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim());
+      drawMarker({ x: state.ideal.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--ideal").trim());
 
       drawPath(state.drag.points, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim(), bounds, progress);
-      drawMarker(state.drag.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim(), "Drag peak");
-      drawMarker({ x: state.drag.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim(), "Drag impact");
+      drawMarker(state.drag.metrics.peak, bounds, getComputedStyle(document.documentElement).getPropertyValue("--compare").trim());
+      drawMarker({ x: state.drag.metrics.range, y: 0 }, bounds, getComputedStyle(document.documentElement).getPropertyValue("--drag").trim());
 
       const origin = toCanvas(0, 0, bounds);
       drawLaunchAngle(bounds);
