@@ -4,13 +4,16 @@ import unittest
 from main import (
     AIR_GAS_CONSTANT,
     G,
+    HTML_PAGE,
     SUTHERLAND_MU0,
     aerodynamic_state,
     air_density_from_conditions,
     analytical_metrics,
+    drag_coefficient_nonspherical,
     drag_coefficient_sphere,
     dynamic_viscosity_air,
     kelvin_from_celsius,
+    projectile_volume_from_diameter,
     pressure_atm_to_pa,
     reynolds_number,
     simulate_drag_reference,
@@ -66,6 +69,12 @@ class AerodynamicHelpersTests(unittest.TestCase):
         self.assertAlmostEqual(transitional, expected, places=9)
         self.assertAlmostEqual(drag_coefficient_sphere(5000.0), 0.44, places=9)
 
+    def test_nonspherical_drag_correlation_differs_from_sphere(self) -> None:
+        shell_cd = drag_coefficient_nonspherical(5000.0, 0.65)
+        sphere_cd = drag_coefficient_sphere(5000.0)
+        self.assertGreater(shell_cd, 0.0)
+        self.assertNotAlmostEqual(shell_cd, sphere_cd, places=6)
+
     def test_reynolds_number_zeroes_for_non_physical_inputs(self) -> None:
         self.assertEqual(reynolds_number(0.0, 10.0, 0.1, 1.8e-5), 0.0)
         self.assertEqual(reynolds_number(1.2, 0.0, 0.1, 1.8e-5), 0.0)
@@ -75,6 +84,16 @@ class AerodynamicHelpersTests(unittest.TestCase):
     def test_material_density_round_trip_matches_mass(self) -> None:
         density = material_density_from_mass_and_diameter(5.0, 0.1)
         self.assertAlmostEqual(mass_from_material_density(density, 0.1), 5.0, places=9)
+
+    def test_shape_volume_factor_changes_mass_consistently(self) -> None:
+        elongated_volume = projectile_volume_from_diameter(0.1, 2.5)
+        spherical_volume = projectile_volume_from_diameter(0.1, 1.0)
+        self.assertGreater(elongated_volume, spherical_volume)
+        self.assertAlmostEqual(
+            mass_from_material_density(7800.0, 0.1, 2.5),
+            7800.0 * elongated_volume,
+            places=9,
+        )
 
     def test_aerodynamic_state_consistency(self) -> None:
         aero = aerodynamic_state(speed=100.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
@@ -127,6 +146,52 @@ class DragSimulationRegressionTests(unittest.TestCase):
         warm = aerodynamic_state(speed=120.0, temperature_c=30.0, pressure_atm=1.0, diameter=0.1)
 
         self.assertLess(warm["air_density"], cold["air_density"])
+
+    def test_shell_shape_uses_nonspherical_drag_model(self) -> None:
+        sphere = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.076)
+        shell = aerodynamic_state(
+            speed=200.0,
+            temperature_c=15.0,
+            pressure_atm=1.0,
+            diameter=0.076,
+            projectile_shape="shell",
+            sphericity=0.65,
+        )
+        self.assertNotAlmostEqual(shell["drag_coefficient"], sphere["drag_coefficient"], places=6)
+
+
+class FrontendContractTests(unittest.TestCase):
+    def test_pressure_slider_allows_zero_for_validation_cue(self) -> None:
+        self.assertIn('id="pressure" type="range" min="0" max="1.2"', HTML_PAGE)
+
+    def test_material_density_control_can_expand_for_dense_historic_presets(self) -> None:
+        self.assertIn("function syncMaterialDensityLimit(materialDensity)", HTML_PAGE)
+        self.assertIn("Math.max(defaultMaterialDensityMax, roundedMax)", HTML_PAGE)
+
+    def test_plot_bounds_keep_at_least_the_requested_axes_but_do_not_clip_presets_by_default(self) -> None:
+        self.assertIn("FIXED_PLOT_BOUNDS.maxX = Math.max(2400, FIXED_PLOT_BOUNDS.maxX);", HTML_PAGE)
+        self.assertIn("FIXED_PLOT_BOUNDS.maxY = Math.max(850, FIXED_PLOT_BOUNDS.maxY);", HTML_PAGE)
+
+    def test_historic_guns_use_stable_per_gun_plot_bounds(self) -> None:
+        self.assertIn("const HISTORICAL_GUN_PLOT_BOUNDS = Object.fromEntries(", HTML_PAGE)
+        self.assertIn("function activePlotBounds()", HTML_PAGE)
+        self.assertIn("function computeFocusedPlotBounds(params)", HTML_PAGE)
+        self.assertIn("return state.currentGun ? HISTORICAL_GUN_PLOT_BOUNDS[state.currentGun] : FIXED_PLOT_BOUNDS;", HTML_PAGE)
+
+    def test_selected_gun_can_be_customized_without_leaving_gun_context(self) -> None:
+        self.assertIn("presetModified: false", HTML_PAGE)
+        self.assertIn("state.presetModified = !paramsMatch(state.params, historicalGuns[state.currentGun].params);", HTML_PAGE)
+        self.assertIn('historicalGuns[state.currentGun].name}${state.presetModified ? " custom" : ""}', HTML_PAGE)
+
+    def test_resize_redraws_without_rerunning_physics(self) -> None:
+        self.assertIn("function recalculatePhysics()", HTML_PAGE)
+        self.assertIn("function redrawDisplay()", HTML_PAGE)
+        self.assertIn('window.addEventListener("resize", redrawDisplay);', HTML_PAGE)
+
+    def test_launch_controls_expose_projectile_shape_toggle(self) -> None:
+        self.assertIn('id="shapeSphereBtn"', HTML_PAGE)
+        self.assertIn('id="shapeShellBtn"', HTML_PAGE)
+        self.assertIn("function setProjectileShape(shape, options = {})", HTML_PAGE)
 
 
 if __name__ == "__main__":

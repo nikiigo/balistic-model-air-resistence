@@ -1,153 +1,163 @@
-# 🚀 Ballistic Simulation with Dynamic Air Resistance
+# Interactive Ballistics Simulator
 
-Physics-based projectile motion simulator with **non-constant aerodynamic drag**, computed dynamically from Reynolds number and atmospheric conditions.
-
----
-
-## ⚡ TL;DR
-
-This project implements a ballistic simulation engine where:
-
-- drag coefficient is **not constant**
-- air density is derived from **temperature and pressure**
-- dynamic viscosity is computed using **Sutherland’s law**
-- flow regime is determined via **Reynolds number**
-- velocity is solved using an **iterative method**
-
-👉 Result: significantly more realistic trajectories compared to simplified models.
-
----
-
-## 📊 Example: Ideal vs Realistic Trajectory
+Interactive web-based projectile simulator for physics education. The app compares ideal projectile motion with a drag model whose aerodynamic parameters are derived dynamically from atmospheric conditions and projectile geometry.
 
 ![Trajectory comparison](assets/screenshots/interactive-ballistics-simulator.png)
 
-Comparison between:
-- ideal trajectory (no air resistance)
-- realistic trajectory with drag computed from Reynolds number
+## Live Demo
 
-The realistic model shows reduced range and a different trajectory shape due to velocity-dependent drag.
+https://funmechanics.net:8443/
 
----
+## What the App Does
 
-## 🌐 Live Demo
+- draws ideal and drag trajectories side by side on the same graph
+- recalculates the shot in real time as the controls change
+- lets users explore historical artillery presets from the 16th to 19th centuries
+- shows core flight metrics for ideal and drag cases
+- includes short educational notes about drag, optimal angle, and model assumptions
 
-👉 https://funmechanics.net:8443/
+## Current Launch Controls
 
----
+The simulator UI currently exposes:
 
-## 🧠 Why this is different
+- launch angle
+- initial velocity
+- projectile shape (`Round shot` or `Shell`)
+- projectile material density
+- air temperature
+- air pressure
+- projectile diameter
+- integration time step
 
-Most projectile simulations use a simplified drag model:
+Material density also has quick shortcuts:
 
-```python
-Fd = k * v**2
-```
+- `S` stone
+- `I` iron
+- `B` bronze
+- `U` uranium
 
-where the drag coefficient is constant.
+## Historical Gun Library
 
-This project instead computes drag dynamically based on physical principles:
+The left-side gun library includes real artillery pieces with images, descriptive notes, and preset parameters. Selecting a gun applies its documented or inferred ballistic profile and switches the graph to a stable scale for that gun.
 
-- air density from **ideal gas law**
-- dynamic viscosity from **Sutherland’s law**
-- drag coefficient from **Reynolds number**
-- nonlinear coupling between velocity and drag resolved iteratively
+Included presets cover:
 
-👉 Drag changes continuously with velocity and environment.
+- Queen Elizabeth's Pocket Pistol
+- Culverin extraordinary
+- Demi-culverin
+- Saker
+- Falconet
+- Demi-cannon
+- Canon de 12 Gribeauval
+- M1857 12-pounder Napoleon
+- 3-inch Ordnance Rifle
+- RBL 12-pounder 8 cwt Armstrong gun
+- 10-pounder Parrott rifle
+- 24-pounder long gun
+- Paixhans gun
 
----
+The historical presets are educational approximations. Some guns used rifled shells or lack directly documented muzzle velocity data, so the simulator uses either a spherical round-shot model or a simplified nonspherical shell model depending on the preset.
 
-## 🔬 Physics Model
+## Physics Model
 
-### Air Density
+The drag equation keeps the standard form:
 
-rho = p / (R * T)
+`Fd = 0.5 * rho * Cd * A * v^2`
 
-### Dynamic Viscosity (Sutherland’s Law)
+But the aerodynamic terms are derived dynamically:
 
-mu(T) = mu0 * (T / T0)^(3/2) * (T0 + S) / (T + S)
+- air density from the ideal gas law
+- dynamic viscosity from Sutherland's law
+- Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
+- drag coefficient from a piecewise sphere correlation for round shot and a nonspherical shell correlation for elongated shell presets
+- projectile area from diameter
+- projectile mass from material density and a shape-aware projectile volume approximation
 
-### Reynolds Number
+At each integration step, the drag solver iterates the velocity update several times to account for the coupling between speed, Reynolds number, drag coefficient, and drag force.
 
-Re = rho * v * d / mu
+## Output Metrics
 
-### Drag Coefficient (Sphere)
+The current UI reports:
 
-- Re < 0.1 → Cd = 24 / Re  
-- 0.1 ≤ Re < 1000 → Cd = 24 / Re * (1 + 0.15 * Re^0.687)  
-- Re ≥ 1000 → Cd = 0.44  
+- ideal range
+- ideal maximum height
+- drag range
+- drag maximum height
+- range loss to drag
+- time step
 
-### Drag Force
+The graph also marks the peak and impact points for ideal and drag trajectories, shows the launch angle at the origin, and includes:
 
-Fd = 0.5 * rho * v^2 * Cd * A
+- header velocity indicators for ideal and drag impact speed
+- a preset indicator showing the active gun or `Manual setup`
+- a header-level scale toggle with `Stable` and `Fit shot` modes
 
----
+## Assumptions and Limits
 
-## ⚙️ Key Features
+- round shot uses a spherical projectile model
+- shell presets use a simplified elongated-projectile drag model
+- subsonic flow only
+- no wind
+- no spin or Magnus effect
+- no terrain modeling
+- constant gravity
+- ideal-gas atmosphere
 
-- Reynolds-number-based drag model  
-- Atmospheric model (temperature + pressure → density, viscosity)  
-- Automatic transition between flow regimes  
-- Iterative solver for velocity-dependent drag  
-- Support for low-density (near-vacuum) conditions  
-- Interactive visualization  
+## Run Locally
 
----
-
-## 🧩 Input Parameters
-
-- temperature (°C)
-- pressure (atm)
-- projectile diameter (m)
-- projectile material density (kg/m³)
-- initial velocity (m/s)
-
----
-
-## 📈 Output
-
-- velocity vector  
-- trajectory  
-- Reynolds number  
-- drag coefficient  
-- air density  
-
----
-
-## 🧪 Usage
+Start the local web server:
 
 ```bash
-python main.py
+python3 main.py
 ```
 
----
+Then open:
 
-## ⚠️ Assumptions
+```text
+http://127.0.0.1:8000
+```
 
-- spherical projectile  
-- subsonic regime  
-- no wind, spin, or turbulence  
-- ideal gas approximation  
+You can also bind a different interface or port:
 
----
+```bash
+python3 main.py --host 127.0.0.1 --port 8888
+```
 
-## 📌 Key Insight
+## Validation
 
-Drag is not constant — it depends on Reynolds number, which in turn depends on velocity and environmental conditions.  
-This creates a nonlinear system that requires iterative solving and leads to behavior not captured by simplified models.
+Run the automated checks:
 
----
+```bash
+python3 -m unittest
+python3 -m py_compile main.py test_main.py
+```
 
-## 🚀 Future Work
+Useful manual checks:
 
-- altitude-dependent atmospheric model  
-- Mach number corrections  
-- non-spherical projectiles  
-- wind and turbulence  
-- higher-order numerical integration (RK4)  
+- change angle and confirm the trajectory is recomputed rather than only visually rescaled
+- switch projectile shape between `Round shot` and `Shell` in custom mode and confirm the trajectory changes
+- set pressure to `0 atm` and verify drag behavior collapses toward the ideal case
+- select a historical gun and confirm the graph switches to that gun's stable scale
+- switch between `Stable` and `Fit shot` in the header and confirm the graph frame changes without changing the underlying trajectory
+- edit a control after selecting a gun and confirm the gun stays selected but is marked as customized
+- resize the browser window and confirm layout and graph remain usable
 
----
+## Project Structure
 
-## 👤 Author
+- [main.py](main.py): HTTP server, HTML, CSS, JavaScript, and Python physics helpers
+- [test_main.py](test_main.py): analytical and aerodynamic regression tests
+- [assets/guns](assets/guns): bundled historical gun images used by the local library
+- [assets/screenshots](assets/screenshots): README screenshot assets
+
+## Future Work
+
+- altitude-dependent atmosphere
+- Mach-number corrections
+- non-spherical projectiles
+- wind and turbulence
+- higher-order integration
+- native Android port
+
+## Author
 
 Igor Nikitin
