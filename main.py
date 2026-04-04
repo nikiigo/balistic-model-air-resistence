@@ -49,6 +49,7 @@ HTML_PAGE = """<!DOCTYPE html>
       --compare: #3f8a47;
       --border: rgba(31, 31, 26, 0.12);
       --shadow: 0 20px 60px rgba(84, 56, 21, 0.16);
+      --main-panel-height: 620px;
     }
 
     * { box-sizing: border-box; }
@@ -69,11 +70,11 @@ HTML_PAGE = """<!DOCTYPE html>
       margin: 24px auto;
       display: grid;
       gap: 18px;
-      grid-template-columns: 340px minmax(0, 1fr);
+      grid-template-columns: 255px minmax(0, 1fr);
       grid-template-areas:
         "header header"
         "guns viz"
-        ". notes";
+        "notes notes";
     }
 
     .card {
@@ -116,14 +117,15 @@ HTML_PAGE = """<!DOCTYPE html>
     .stat {
       background: linear-gradient(180deg, rgba(255,255,255,0.65), rgba(255,255,255,0.35));
       border-radius: 18px;
-      padding: 10px 12px;
+      padding: 5px 8px;
       border: 1px solid rgba(255,255,255,0.5);
+      font-size: 0.8rem;
     }
 
     .stat strong {
       display: block;
-      font-size: 1.05rem;
-      margin-top: 4px;
+      font-size: 0.82rem;
+      margin-top: 2px;
     }
 
     .guns {
@@ -134,7 +136,7 @@ HTML_PAGE = """<!DOCTYPE html>
       display: grid;
       gap: 16px;
       align-content: stretch;
-      height: 100%;
+      height: var(--main-panel-height);
     }
 
     .guns .section-stack {
@@ -242,6 +244,7 @@ HTML_PAGE = """<!DOCTYPE html>
       display: grid;
       gap: 16px;
       align-content: start;
+      height: var(--main-panel-height);
     }
 
     .canvas-wrap {
@@ -402,19 +405,6 @@ HTML_PAGE = """<!DOCTYPE html>
       border-radius: 12px;
     }
 
-    .gun-slider-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .gun-slider-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
     .gun-library {
       display: flex;
       flex-direction: column;
@@ -470,12 +460,12 @@ HTML_PAGE = """<!DOCTYPE html>
       padding: 6px 8px;
       text-align: center;
       font-size: 0.76rem;
-      color: #1f1f1a;
+      color: #fffaf0;
       font-weight: 800;
       border-radius: 10px;
-      background: rgba(255, 248, 236, 0.88);
-      border: 1px solid rgba(31, 31, 26, 0.1);
-      backdrop-filter: blur(6px);
+      background: transparent;
+      border: none;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.72);
     }
 
     .gun-copy {
@@ -553,6 +543,11 @@ HTML_PAGE = """<!DOCTYPE html>
       .hero {
         grid-template-columns: 1fr;
       }
+
+      .guns,
+      .viz {
+        height: auto;
+      }
     }
 
     @media (max-width: 700px) {
@@ -586,10 +581,6 @@ HTML_PAGE = """<!DOCTYPE html>
 
       .gun-library {
         gap: 10px;
-      }
-
-      .gun-slider-actions {
-        flex-direction: row;
       }
 
       .gun-hover {
@@ -643,13 +634,6 @@ HTML_PAGE = """<!DOCTYPE html>
           select a real gun
         </div>
         <div class="gun-zone">
-          <div class="gun-slider-head">
-            <div class="muted">Browse guns</div>
-            <div class="gun-slider-actions">
-              <button class="secondary" id="gunPrevBtn">Up</button>
-              <button class="secondary" id="gunNextBtn">Down</button>
-            </div>
-          </div>
           <div class="gun-library" id="gunLibrary"></div>
           <div class="gun-hover hidden" id="gunHover">
             <div class="gun-hover-head">
@@ -794,8 +778,6 @@ HTML_PAGE = """<!DOCTYPE html>
     const replayBtn = document.getElementById("replayBtn");
     const resetBtn = document.getElementById("resetBtn");
     const toggleControlsBtn = document.getElementById("toggleControlsBtn");
-    const gunPrevBtn = document.getElementById("gunPrevBtn");
-    const gunNextBtn = document.getElementById("gunNextBtn");
     const controlScroll = document.getElementById("controlScroll");
     const gunLibraryEl = document.getElementById("gunLibrary");
     const lockNoteEl = document.getElementById("lockNote");
@@ -1087,12 +1069,6 @@ HTML_PAGE = """<!DOCTYPE html>
           launch();
         });
       });
-    }
-
-    function scrollGunLibrary(direction) {
-      const sampleCard = gunLibraryEl.querySelector(".gun-card");
-      const step = sampleCard ? sampleCard.getBoundingClientRect().height + 12 : 144;
-      gunLibraryEl.scrollBy({ top: direction * step, behavior: "smooth" });
     }
 
     function showGunHover(gunKey) {
@@ -1456,12 +1432,6 @@ HTML_PAGE = """<!DOCTYPE html>
     });
     toggleControlsBtn.addEventListener("click", () => {
       setControlsCollapsed(!state.controlsCollapsed);
-    });
-    gunPrevBtn.addEventListener("click", () => {
-      scrollGunLibrary(-1);
-    });
-    gunNextBtn.addEventListener("click", () => {
-      scrollGunLibrary(1);
     });
     document.querySelectorAll("[data-preset]").forEach((button) => {
       button.addEventListener("click", () => {
