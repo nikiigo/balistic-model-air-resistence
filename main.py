@@ -1101,6 +1101,14 @@ HTML_PAGE = """<!DOCTYPE html>
               <input id="speed" type="range" min="5" max="440" step="1" value="55">
             </label>
             <label>
+              <span class="control-header"><span>Air pressure</span><span class="value" data-out="pressure">1.00 atm</span></span>
+              <input id="pressure" type="range" min="0" max="1.2" step="0.01" value="1">
+            </label>
+            <label>
+              <span class="control-header"><span>Air temperature</span><span class="value" data-out="temperature">15.0 °C</span></span>
+              <input id="temperature" type="range" min="-30" max="45" step="1" value="15">
+            </label>
+            <label>
               <span class="control-header"><span>Material density</span><span class="value" data-out="materialDensity">1324 kg/m³</span></span>
               <input id="materialDensity" type="range" min="50" max="19500" step="10" value="1324">
               <div class="material-presets">
@@ -1109,14 +1117,6 @@ HTML_PAGE = """<!DOCTYPE html>
                 <button class="secondary material-chip" type="button" data-density="8800" title="Bronze">B</button>
                 <button class="secondary material-chip" type="button" data-density="19050" title="Uranium">U</button>
               </div>
-            </label>
-            <label>
-              <span class="control-header"><span>Air temperature</span><span class="value" data-out="temperature">15.0 °C</span></span>
-              <input id="temperature" type="range" min="-30" max="45" step="1" value="15">
-            </label>
-            <label>
-              <span class="control-header"><span>Air pressure</span><span class="value" data-out="pressure">1.00 atm</span></span>
-              <input id="pressure" type="range" min="0" max="1.2" step="0.01" value="1">
             </label>
             <label>
               <span class="control-header"><span>Projectile diameter</span><span class="value" data-out="diameter">0.113 m</span></span>
