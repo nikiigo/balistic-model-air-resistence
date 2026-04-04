@@ -3,8 +3,10 @@ import unittest
 
 from main import (
     AIR_GAS_CONSTANT,
+    AIR_HEAT_CAPACITY_RATIO,
     G,
     HTML_PAGE,
+    MIN_PRESSURE_ATM,
     SUTHERLAND_MU0,
     aerodynamic_state,
     air_density_from_conditions,
@@ -13,10 +15,12 @@ from main import (
     drag_coefficient_sphere,
     dynamic_viscosity_air,
     kelvin_from_celsius,
+    mach_number,
     projectile_volume_from_diameter,
     pressure_atm_to_pa,
     reynolds_number,
     simulate_drag_reference,
+    speed_of_sound_air,
     material_density_from_mass_and_diameter,
     mass_from_material_density,
     sphere_area_from_diameter,
@@ -55,9 +59,23 @@ class AerodynamicHelpersTests(unittest.TestCase):
         self.assertAlmostEqual(density, expected, places=9)
         self.assertAlmostEqual(density, 1.225, places=3)
 
+    def test_air_density_clamps_pressure_to_supported_floor(self) -> None:
+        clamped = air_density_from_conditions(temperature_c=15.0, pressure_atm=0.0)
+        minimum = air_density_from_conditions(temperature_c=15.0, pressure_atm=MIN_PRESSURE_ATM)
+        self.assertAlmostEqual(clamped, minimum, places=9)
+
     def test_dynamic_viscosity_matches_reference_value_at_zero_celsius(self) -> None:
         viscosity = dynamic_viscosity_air(0.0)
         self.assertAlmostEqual(viscosity, SUTHERLAND_MU0, places=9)
+
+    def test_speed_of_sound_matches_ideal_gas_relation(self) -> None:
+        speed = speed_of_sound_air(15.0)
+        expected = math.sqrt(AIR_HEAT_CAPACITY_RATIO * AIR_GAS_CONSTANT * kelvin_from_celsius(15.0))
+        self.assertAlmostEqual(speed, expected, places=9)
+
+    def test_mach_number_matches_speed_ratio(self) -> None:
+        speed = speed_of_sound_air(15.0) * 0.75
+        self.assertAlmostEqual(mach_number(speed, 15.0), 0.75, places=9)
 
     def test_sphere_area_from_diameter(self) -> None:
         self.assertAlmostEqual(sphere_area_from_diameter(0.1), math.pi * 0.01 / 4.0, places=9)
@@ -100,7 +118,10 @@ class AerodynamicHelpersTests(unittest.TestCase):
         self.assertAlmostEqual(aero["area"], sphere_area_from_diameter(0.1), places=9)
         self.assertGreater(aero["air_density"], 1.0)
         self.assertGreater(aero["viscosity"], 0.0)
+        self.assertGreater(aero["speed_of_sound"], 300.0)
         self.assertGreater(aero["reynolds"], 0.0)
+        self.assertGreater(aero["mach"], 0.0)
+        self.assertGreater(aero["base_drag_coefficient"], 0.0)
         self.assertGreater(aero["drag_coefficient"], 0.0)
         self.assertGreater(aero["drag_force"], 0.0)
 
@@ -117,17 +138,14 @@ class DragSimulationRegressionTests(unittest.TestCase):
             "dt": 0.01,
         }
 
-    def test_zero_pressure_reduces_drag_relative_to_standard_pressure(self) -> None:
-        standard = simulate_drag_reference(self.base_params())
-        vacuumish = simulate_drag_reference({**self.base_params(), "pressure": 0.0})
-        ideal = analytical_metrics(speed=self.base_params()["speed"], angle_deg=self.base_params()["angle"])["range"]
-
-        self.assertLess(standard["metrics"]["range"], ideal)
-        self.assertGreater(vacuumish["metrics"]["range"], standard["metrics"]["range"])
-        self.assertLess(vacuumish["aero"]["launch_drag_force"], 1e-9)
+    def test_pressure_below_supported_floor_clamps_to_minimum(self) -> None:
+        clamped = simulate_drag_reference({**self.base_params(), "pressure": 0.0})
+        minimum = simulate_drag_reference({**self.base_params(), "pressure": MIN_PRESSURE_ATM})
+        self.assertAlmostEqual(clamped["metrics"]["range"], minimum["metrics"]["range"], places=9)
+        self.assertAlmostEqual(clamped["aero"]["launch_drag_force"], minimum["aero"]["launch_drag_force"], places=9)
 
     def test_higher_pressure_increases_drag_and_reduces_range(self) -> None:
-        low_pressure = simulate_drag_reference({**self.base_params(), "pressure": 0.8})
+        low_pressure = simulate_drag_reference({**self.base_params(), "pressure": MIN_PRESSURE_ATM})
         high_pressure = simulate_drag_reference({**self.base_params(), "pressure": 1.2})
 
         self.assertGreater(high_pressure["aero"]["launch_drag_force"], low_pressure["aero"]["launch_drag_force"])
@@ -159,10 +177,36 @@ class DragSimulationRegressionTests(unittest.TestCase):
         )
         self.assertNotAlmostEqual(shell["drag_coefficient"], sphere["drag_coefficient"], places=6)
 
+    def test_high_mach_flow_increases_drag_coefficient_above_base_reynolds_value(self) -> None:
+        subsonic = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+        transonic = aerodynamic_state(speed=340.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+
+        self.assertLess(subsonic["mach"], 0.7)
+        self.assertGreater(transonic["mach"], 0.95)
+        self.assertAlmostEqual(subsonic["drag_coefficient"], subsonic["base_drag_coefficient"], places=9)
+        self.assertGreater(transonic["drag_coefficient"], transonic["base_drag_coefficient"])
+        self.assertGreater(transonic["drag_coefficient"], subsonic["drag_coefficient"])
+
+    def test_rk4_solution_converges_as_time_step_shrinks(self) -> None:
+        coarse = simulate_drag_reference({**self.base_params(), "dt": 0.02})
+        medium = simulate_drag_reference({**self.base_params(), "dt": 0.01})
+        fine = simulate_drag_reference({**self.base_params(), "dt": 0.005})
+        reference = simulate_drag_reference({**self.base_params(), "dt": 0.0025})
+
+        coarse_error = abs(coarse["metrics"]["range"] - reference["metrics"]["range"])
+        medium_error = abs(medium["metrics"]["range"] - reference["metrics"]["range"])
+        fine_error = abs(fine["metrics"]["range"] - reference["metrics"]["range"])
+
+        self.assertGreater(coarse_error, medium_error)
+        self.assertGreater(medium_error, fine_error)
+        self.assertLess(fine_error, 0.05)
+
 
 class FrontendContractTests(unittest.TestCase):
-    def test_pressure_slider_allows_zero_for_validation_cue(self) -> None:
-        self.assertIn('id="pressure" type="range" min="0" max="1.2"', HTML_PAGE)
+    def test_pressure_slider_enforces_supported_minimum(self) -> None:
+        self.assertIn(f'id="pressure" type="range" min="{MIN_PRESSURE_ATM}" max="1.2"', HTML_PAGE)
+        self.assertIn("const MIN_PRESSURE = 0.001;", HTML_PAGE)
+        self.assertIn("function clampPressure(pressureAtm)", HTML_PAGE)
 
     def test_material_density_control_can_expand_for_dense_historic_presets(self) -> None:
         self.assertIn("function syncMaterialDensityLimit(materialDensity)", HTML_PAGE)
@@ -192,6 +236,27 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="shapeSphereBtn"', HTML_PAGE)
         self.assertIn('id="shapeShellBtn"', HTML_PAGE)
         self.assertIn("function setProjectileShape(shape, options = {})", HTML_PAGE)
+
+    def test_header_exposes_flight_time_indicators(self) -> None:
+        self.assertIn('id="hero-ideal-time"', HTML_PAGE)
+        self.assertIn('id="hero-drag-time"', HTML_PAGE)
+        self.assertIn('state.ideal.metrics.flightTime.toFixed(2)', HTML_PAGE)
+        self.assertIn('state.drag.metrics.flightTime.toFixed(2)', HTML_PAGE)
+        self.assertIn('id="hero-impact-reynolds"', HTML_PAGE)
+        self.assertIn('state.drag.aero.impactReynolds.toFixed(0)', HTML_PAGE)
+        self.assertNotIn('id="hero-ideal-speed"', HTML_PAGE)
+
+    def test_frontend_includes_mach_aware_drag_helpers(self) -> None:
+        self.assertIn("const AIR_HEAT_CAPACITY_RATIO = 1.4;", HTML_PAGE)
+        self.assertIn("function speedOfSound(temperatureC)", HTML_PAGE)
+        self.assertIn("function machNumber(speed, temperatureC)", HTML_PAGE)
+        self.assertIn("function compressibilityDragMultiplier(mach)", HTML_PAGE)
+
+    def test_historic_library_includes_siege_engines(self) -> None:
+        self.assertIn("Counterweight trebuchet", HTML_PAGE)
+        self.assertIn("Mangonel / traction catapult", HTML_PAGE)
+        self.assertIn("Ballista", HTML_PAGE)
+        self.assertIn("Historic Launcher Library", HTML_PAGE)
 
 
 if __name__ == "__main__":
