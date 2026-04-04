@@ -23,13 +23,14 @@ python3 main.py --host 0.0.0.0 --port 9000
 
 ## Features
 
-- Adjustable launch angle, speed, mass, drag coefficient, air density, cross-sectional area, and integration time step
-- Toggleable ideal and drag trajectories
+- Adjustable launch angle, speed, mass, air temperature, air pressure, projectile diameter, and integration time step
+- Simultaneous ideal and drag trajectories
 - Comparison view with launch point, peak markers, and impact points
 - Presets for ideal vacuum, high drag, heavy projectile, and long-range shots
 - Historical gun library with image-backed presets for real 16th to 19th century artillery pieces
 - Gun lock mode that freezes all ballistic parameters except launch angle
-- Real-time metrics for range, maximum height, flight time, and impact speed
+- Drag model derived from ideal-gas air density, Sutherland viscosity, Reynolds number, and sphere drag correlation
+- Real-time metrics for range, maximum height, flight time, impact speed, air density, Reynolds number, and drag force
 - Responsive single-page layout suitable for desktop and mobile widths
 
 ## Validation
@@ -40,4 +41,4 @@ Analytical helpers are covered with unit tests:
 python3 -m unittest
 ```
 
-The visual drag simulation can be checked against the ideal model by setting air density to `0` or disabling drag.
+The visual drag simulation can be checked against the ideal model by setting pressure to `0 atm`, which collapses drag toward vacuum behavior.

@@ -1,7 +1,21 @@
 import math
 import unittest
 
-from main import G, analytical_metrics
+from main import (
+    AIR_GAS_CONSTANT,
+    G,
+    SUTHERLAND_MU0,
+    aerodynamic_state,
+    air_density_from_conditions,
+    analytical_metrics,
+    drag_coefficient_sphere,
+    dynamic_viscosity_air,
+    kelvin_from_celsius,
+    pressure_atm_to_pa,
+    reynolds_number,
+    simulate_drag_reference,
+    sphere_area_from_diameter,
+)
 
 
 class AnalyticalMetricsTests(unittest.TestCase):
@@ -27,6 +41,86 @@ class AnalyticalMetricsTests(unittest.TestCase):
         lower = analytical_metrics(speed=speed, angle_deg=30)
         higher = analytical_metrics(speed=speed, angle_deg=60)
         self.assertAlmostEqual(lower["range"], higher["range"], places=6)
+
+
+class AerodynamicHelpersTests(unittest.TestCase):
+    def test_air_density_matches_ideal_gas_law_at_standard_conditions(self) -> None:
+        density = air_density_from_conditions(temperature_c=15.0, pressure_atm=1.0)
+        expected = pressure_atm_to_pa(1.0) / (AIR_GAS_CONSTANT * kelvin_from_celsius(15.0))
+        self.assertAlmostEqual(density, expected, places=9)
+        self.assertAlmostEqual(density, 1.225, places=3)
+
+    def test_dynamic_viscosity_matches_reference_value_at_zero_celsius(self) -> None:
+        viscosity = dynamic_viscosity_air(0.0)
+        self.assertAlmostEqual(viscosity, SUTHERLAND_MU0, places=9)
+
+    def test_sphere_area_from_diameter(self) -> None:
+        self.assertAlmostEqual(sphere_area_from_diameter(0.1), math.pi * 0.01 / 4.0, places=9)
+
+    def test_drag_coefficient_piecewise_regimes(self) -> None:
+        self.assertAlmostEqual(drag_coefficient_sphere(0.05), 480.0, places=6)
+        transitional = drag_coefficient_sphere(100.0)
+        expected = (24.0 / 100.0) * (1.0 + 0.15 * (100.0 ** 0.687))
+        self.assertAlmostEqual(transitional, expected, places=9)
+        self.assertAlmostEqual(drag_coefficient_sphere(5000.0), 0.44, places=9)
+
+    def test_reynolds_number_zeroes_for_non_physical_inputs(self) -> None:
+        self.assertEqual(reynolds_number(0.0, 10.0, 0.1, 1.8e-5), 0.0)
+        self.assertEqual(reynolds_number(1.2, 0.0, 0.1, 1.8e-5), 0.0)
+        self.assertEqual(reynolds_number(1.2, 10.0, 0.0, 1.8e-5), 0.0)
+        self.assertEqual(reynolds_number(1.2, 10.0, 0.1, 0.0), 0.0)
+
+    def test_aerodynamic_state_consistency(self) -> None:
+        aero = aerodynamic_state(speed=100.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+        self.assertAlmostEqual(aero["area"], sphere_area_from_diameter(0.1), places=9)
+        self.assertGreater(aero["air_density"], 1.0)
+        self.assertGreater(aero["viscosity"], 0.0)
+        self.assertGreater(aero["reynolds"], 0.0)
+        self.assertGreater(aero["drag_coefficient"], 0.0)
+        self.assertGreater(aero["drag_force"], 0.0)
+
+
+class DragSimulationRegressionTests(unittest.TestCase):
+    def base_params(self) -> dict[str, float]:
+        return {
+            "angle": 35.0,
+            "speed": 120.0,
+            "mass": 5.0,
+            "temperature": 15.0,
+            "pressure": 1.0,
+            "diameter": 0.1,
+            "dt": 0.01,
+        }
+
+    def test_zero_pressure_reduces_drag_relative_to_standard_pressure(self) -> None:
+        standard = simulate_drag_reference(self.base_params())
+        vacuumish = simulate_drag_reference({**self.base_params(), "pressure": 0.0})
+        ideal = analytical_metrics(speed=self.base_params()["speed"], angle_deg=self.base_params()["angle"])["range"]
+
+        self.assertLess(standard["metrics"]["range"], ideal)
+        self.assertGreater(vacuumish["metrics"]["range"], standard["metrics"]["range"])
+        self.assertLess(vacuumish["aero"]["launch_drag_force"], 1e-9)
+
+    def test_higher_pressure_increases_drag_and_reduces_range(self) -> None:
+        low_pressure = simulate_drag_reference({**self.base_params(), "pressure": 0.8})
+        high_pressure = simulate_drag_reference({**self.base_params(), "pressure": 1.2})
+
+        self.assertGreater(high_pressure["aero"]["launch_drag_force"], low_pressure["aero"]["launch_drag_force"])
+        self.assertLess(high_pressure["metrics"]["range"], low_pressure["metrics"]["range"])
+
+    def test_larger_diameter_increases_drag_and_reduces_range(self) -> None:
+        small = simulate_drag_reference({**self.base_params(), "diameter": 0.05})
+        large = simulate_drag_reference({**self.base_params(), "diameter": 0.2})
+
+        self.assertGreater(large["aero"]["area"], small["aero"]["area"])
+        self.assertGreater(large["aero"]["launch_drag_force"], small["aero"]["launch_drag_force"])
+        self.assertLess(large["metrics"]["range"], small["metrics"]["range"])
+
+    def test_higher_temperature_reduces_density(self) -> None:
+        cold = aerodynamic_state(speed=120.0, temperature_c=-10.0, pressure_atm=1.0, diameter=0.1)
+        warm = aerodynamic_state(speed=120.0, temperature_c=30.0, pressure_atm=1.0, diameter=0.1)
+
+        self.assertLess(warm["air_density"], cold["air_density"])
 
 
 if __name__ == "__main__":

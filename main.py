@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Dict
 
 G = 9.81
+AIR_GAS_CONSTANT = 287.05
+SUTHERLAND_MU0 = 1.716e-5
+SUTHERLAND_T0 = 273.15
+SUTHERLAND_S = 111.0
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 
@@ -24,6 +28,182 @@ def analytical_metrics(speed: float, angle_deg: float, gravity: float = G) -> Di
         "flight_time": max(flight_time, 0.0),
         "max_height": max(max_height, 0.0),
         "range": max(range_distance, 0.0),
+    }
+
+
+def kelvin_from_celsius(temperature_c: float) -> float:
+    return temperature_c + 273.15
+
+
+def pressure_atm_to_pa(pressure_atm: float) -> float:
+    return pressure_atm * 101325.0
+
+
+def air_density_from_conditions(temperature_c: float, pressure_atm: float) -> float:
+    temperature_k = kelvin_from_celsius(temperature_c)
+    if temperature_k <= 0:
+        return 0.0
+    return pressure_atm_to_pa(pressure_atm) / (AIR_GAS_CONSTANT * temperature_k)
+
+
+def dynamic_viscosity_air(temperature_c: float) -> float:
+    temperature_k = kelvin_from_celsius(temperature_c)
+    if temperature_k <= 0:
+        return 0.0
+    return SUTHERLAND_MU0 * ((temperature_k / SUTHERLAND_T0) ** 1.5) * (
+        (SUTHERLAND_T0 + SUTHERLAND_S) / (temperature_k + SUTHERLAND_S)
+    )
+
+
+def reynolds_number(density: float, speed: float, diameter: float, viscosity: float) -> float:
+    if viscosity <= 0 or diameter <= 0 or density <= 0 or speed <= 0:
+        return 0.0
+    return density * speed * diameter / viscosity
+
+
+def drag_coefficient_sphere(reynolds: float) -> float:
+    if reynolds <= 0:
+        return 0.0
+    if reynolds < 0.1:
+        return 24.0 / reynolds
+    if reynolds < 1000.0:
+        return (24.0 / reynolds) * (1.0 + 0.15 * (reynolds ** 0.687))
+    return 0.44
+
+
+def sphere_area_from_diameter(diameter: float) -> float:
+    if diameter <= 0:
+        return 0.0
+    return math.pi * diameter * diameter / 4.0
+
+
+def aerodynamic_state(
+    speed: float,
+    temperature_c: float,
+    pressure_atm: float,
+    diameter: float,
+) -> Dict[str, float]:
+    density = air_density_from_conditions(temperature_c, pressure_atm)
+    viscosity = dynamic_viscosity_air(temperature_c)
+    area = sphere_area_from_diameter(diameter)
+    reynolds = reynolds_number(density, speed, diameter, viscosity)
+    drag_coefficient = drag_coefficient_sphere(reynolds)
+    drag_force = 0.5 * density * drag_coefficient * area * speed * speed
+    return {
+        "air_density": density,
+        "viscosity": viscosity,
+        "area": area,
+        "reynolds": reynolds,
+        "drag_coefficient": drag_coefficient,
+        "drag_force": drag_force,
+    }
+
+
+def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000, iterations: int = 4) -> Dict[str, object]:
+    theta = math.radians(params["angle"])
+    x = 0.0
+    y = 0.0
+    vx = params["speed"] * math.cos(theta)
+    vy = params["speed"] * math.sin(theta)
+    dt = params["dt"]
+    aero = aerodynamic_state(
+        math.hypot(vx, vy),
+        params["temperature"],
+        params["pressure"],
+        params["diameter"],
+    )
+    points = [{"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero}]
+    t = 0.0
+    max_height = 0.0
+    peak = {"x": 0.0, "y": 0.0}
+
+    for _ in range(max_steps):
+        iter_vx = vx
+        iter_vy = vy
+        iter_aero = aero
+
+        for _ in range(iterations):
+            speed = math.hypot(iter_vx, iter_vy)
+            iter_aero = aerodynamic_state(
+                speed,
+                params["temperature"],
+                params["pressure"],
+                params["diameter"],
+            )
+            drag_accel_scale = 0.0 if speed == 0.0 else iter_aero["drag_force"] / (params["mass"] * speed)
+            ax = -drag_accel_scale * iter_vx
+            ay = -G - (drag_accel_scale * iter_vy)
+            next_vx = vx + (ax * dt)
+            next_vy = vy + (ay * dt)
+            iter_vx = 0.5 * (iter_vx + next_vx)
+            iter_vy = 0.5 * (iter_vy + next_vy)
+
+        vx = iter_vx
+        vy = iter_vy
+        aero = aerodynamic_state(
+            math.hypot(vx, vy),
+            params["temperature"],
+            params["pressure"],
+            params["diameter"],
+        )
+        x += vx * dt
+        y += vy * dt
+        t += dt
+
+        if y > max_height:
+            max_height = y
+            peak = {"x": x, "y": y}
+
+        if y <= 0.0 and t > 0.0:
+            prev = points[-1]
+            ratio = prev["y"] / (prev["y"] - y) if prev["y"] != y else 1.0
+            impact_x = prev["x"] + (x - prev["x"]) * ratio
+            impact_t = prev["t"] + (t - prev["t"]) * ratio
+            points.append({"x": impact_x, "y": 0.0, "t": impact_t, "vx": vx, "vy": vy, **aero})
+            return {
+                "points": points,
+                "metrics": {
+                    "range": impact_x,
+                    "max_height": max_height,
+                    "flight_time": impact_t,
+                    "final_speed": math.hypot(vx, vy),
+                    "peak": peak,
+                },
+                "aero": {
+                    "air_density": aero["air_density"],
+                    "viscosity": aero["viscosity"],
+                    "area": aero["area"],
+                    "launch_reynolds": points[0]["reynolds"],
+                    "launch_drag_coefficient": points[0]["drag_coefficient"],
+                    "launch_drag_force": points[0]["drag_force"],
+                    "impact_reynolds": aero["reynolds"],
+                    "impact_drag_coefficient": aero["drag_coefficient"],
+                    "impact_drag_force": aero["drag_force"],
+                },
+            }
+
+        points.append({"x": x, "y": y, "t": t, "vx": vx, "vy": vy, **aero})
+
+    return {
+        "points": points,
+        "metrics": {
+            "range": x,
+            "max_height": max_height,
+            "flight_time": t,
+            "final_speed": math.hypot(vx, vy),
+            "peak": peak,
+        },
+        "aero": {
+            "air_density": aero["air_density"],
+            "viscosity": aero["viscosity"],
+            "area": aero["area"],
+            "launch_reynolds": points[0]["reynolds"],
+            "launch_drag_coefficient": points[0]["drag_coefficient"],
+            "launch_drag_force": points[0]["drag_force"],
+            "impact_reynolds": aero["reynolds"],
+            "impact_drag_coefficient": aero["drag_coefficient"],
+            "impact_drag_force": aero["drag_force"],
+        },
     }
 
 
@@ -711,16 +891,16 @@ HTML_PAGE = """<!DOCTYPE html>
               <input id="mass" type="range" min="0.1" max="20" step="0.1" value="1">
             </label>
             <label>
-              <span class="control-header"><span>Drag coefficient (Cd)</span><span class="value" data-out="dragCoefficient">0.47</span></span>
-              <input id="dragCoefficient" type="range" min="0.05" max="1.5" step="0.01" value="0.47">
+              <span class="control-header"><span>Air temperature</span><span class="value" data-out="temperature">15.0 °C</span></span>
+              <input id="temperature" type="range" min="-30" max="45" step="1" value="15">
             </label>
             <label>
-              <span class="control-header"><span>Air density</span><span class="value" data-out="airDensity">1.225 kg/m³</span></span>
-              <input id="airDensity" type="range" min="0" max="1.5" step="0.01" value="1.225">
+              <span class="control-header"><span>Air pressure</span><span class="value" data-out="pressure">1.00 atm</span></span>
+              <input id="pressure" type="range" min="0" max="1.2" step="0.01" value="1">
             </label>
             <label>
-              <span class="control-header"><span>Cross-sectional area</span><span class="value" data-out="area">0.010 m²</span></span>
-              <input id="area" type="range" min="0.001" max="0.08" step="0.001" value="0.01">
+              <span class="control-header"><span>Projectile diameter</span><span class="value" data-out="diameter">0.113 m</span></span>
+              <input id="diameter" type="range" min="0.01" max="0.30" step="0.001" value="0.113">
             </label>
             <label>
               <span class="control-header"><span>Time step</span><span class="value" data-out="dt">0.016 s</span></span>
@@ -771,39 +951,44 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
       <div class="note">
         <strong>Validation cue</strong>
-        <span class="muted">Set air density to zero or disable drag to make the simulated path collapse toward the analytical ideal solution.</span>
+        <span class="muted">Set pressure to 0 atm to collapse the drag model toward the analytical ideal solution.</span>
       </div>
       <div class="note">
         <strong>Historical preset caveat</strong>
-        <span class="muted">Gun presets use documented bore, shot mass, and listed range or muzzle velocity. Drag coefficient and projectile area are simplified simulation inputs, and the Gribeauval launch speed is explicitly inferred from its reported maximum range.</span>
+        <span class="muted">Gun presets use documented bore, shot mass, and listed range or muzzle velocity. Drag is derived from temperature, pressure, projectile diameter, and Reynolds number, while the Gribeauval launch speed remains inferred from its reported maximum range.</span>
       </div>
     </aside>
   </main>
   <script>
+    const AIR_GAS_CONSTANT = 287.05;
+    const SUTHERLAND_MU0 = 1.716e-5;
+    const SUTHERLAND_T0 = 273.15;
+    const SUTHERLAND_S = 111;
+
     const defaults = {
       angle: 45,
       speed: 55,
       mass: 1,
-      dragCoefficient: 0.47,
-      airDensity: 1.225,
-      area: 0.01,
+      temperature: 15,
+      pressure: 1,
+      diameter: 0.113,
       dt: 0.016
     };
 
     const presets = {
-      vacuum: { angle: 45, speed: 50, mass: 1, dragCoefficient: 0.47, airDensity: 0, area: 0.01, dt: 0.016 },
-      highDrag: { angle: 42, speed: 48, mass: 0.45, dragCoefficient: 1.2, airDensity: 1.225, area: 0.045, dt: 0.012 },
-      heavy: { angle: 45, speed: 55, mass: 8, dragCoefficient: 0.35, airDensity: 1.225, area: 0.012, dt: 0.016 },
-      longRange: { angle: 34, speed: 120, mass: 5, dragCoefficient: 0.2, airDensity: 1.0, area: 0.008, dt: 0.01 }
+      vacuum: { angle: 45, speed: 50, mass: 1, temperature: 15, pressure: 0, diameter: 0.113, dt: 0.016 },
+      highDrag: { angle: 42, speed: 48, mass: 0.45, temperature: 30, pressure: 1.05, diameter: 0.239, dt: 0.012 },
+      heavy: { angle: 45, speed: 55, mass: 8, temperature: 15, pressure: 1, diameter: 0.124, dt: 0.016 },
+      longRange: { angle: 34, speed: 120, mass: 5, temperature: 5, pressure: 0.9, diameter: 0.101, dt: 0.01 }
     };
 
     const formatters = {
       angle: (v) => `${Number(v).toFixed(1)}°`,
       speed: (v) => `${Number(v).toFixed(1)} m/s`,
       mass: (v) => `${Number(v).toFixed(2)} kg`,
-      dragCoefficient: (v) => Number(v).toFixed(2),
-      airDensity: (v) => `${Number(v).toFixed(3)} kg/m³`,
-      area: (v) => `${Number(v).toFixed(3)} m²`,
+      temperature: (v) => `${Number(v).toFixed(1)} °C`,
+      pressure: (v) => `${Number(v).toFixed(2)} atm`,
+      diameter: (v) => `${Number(v).toFixed(3)} m`,
       dt: (v) => `${Number(v).toFixed(3)} s`,
     };
 
@@ -829,9 +1014,9 @@ HTML_PAGE = """<!DOCTYPE html>
       angle: document.getElementById("angle"),
       speed: document.getElementById("speed"),
       mass: document.getElementById("mass"),
-      dragCoefficient: document.getElementById("dragCoefficient"),
-      airDensity: document.getElementById("airDensity"),
-      area: document.getElementById("area"),
+      temperature: document.getElementById("temperature"),
+      pressure: document.getElementById("pressure"),
+      diameter: document.getElementById("diameter"),
       dt: document.getElementById("dt")
     };
 
@@ -842,13 +1027,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/queen-elizabeths-pocket-pistol.jpg",
         imageAlt: "Queen Elizabeth's Pocket Pistol at Dover Castle",
         imagePosition: "center center",
-        caliber: "4.75 in (121 mm)",
+        diameterLabel: "121 mm",
         projectile: "10 lb shot (4.54 kg)",
         muzzleVelocity: "Estimated 134 m/s",
         range: "1,829 m test range",
         service: "Tudor coastal artillery",
         note: "This giant basilisk survives at Dover Castle. The simulator launch speed is inferred from the reported shot distance rather than a documented muzzle-velocity figure.",
-        params: { angle: 16, speed: 134, mass: 4.54, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0115, dt: 0.02 },
+        params: { angle: 16, speed: 134, mass: 4.54, temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Queen_Elizabeth%27s_Pocket_Pistol" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Queen_Elizabeth%27s_Pocket_Pistol.JPG" }
@@ -860,13 +1045,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/korean-culverin.jpg",
         imageAlt: "Korean culverin",
         imagePosition: "center center",
-        caliber: "5.5 in (140 mm)",
+        diameterLabel: "140 mm",
         projectile: "17 lb shot (7.71 kg)",
         muzzleVelocity: "408 m/s",
         range: "Over 450 m at low elevation",
         service: "Renaissance field and siege artillery",
         note: "The speed figure comes from tests of a modern replica of an extraordinary culverin. Shot weight varied by pattern, so this preset uses a mid-range historical ball mass.",
-        params: { angle: 9, speed: 408, mass: 7.71, dragCoefficient: 0.43, airDensity: 1.225, area: 0.0154, dt: 0.012 },
+        params: { angle: 9, speed: 408, mass: 7.71, temperature: 15, pressure: 1, diameter: 0.140, dt: 0.012 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Korean_culverin.jpg" }
@@ -878,13 +1063,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/demi-culverin-mary-rose.jpg",
         imageAlt: "Demi-culverin from the Mary Rose collection",
         imagePosition: "center center",
-        caliber: "4.0 in (102 mm)",
+        diameterLabel: "102 mm",
         projectile: "8 lb shot (3.63 kg)",
         muzzleVelocity: "Modeled 145 m/s",
         range: "549 m effective range",
         service: "Naval and field artillery",
         note: "The article provides shot class and effective range but not muzzle velocity. The simulator uses a conservative modeled launch speed consistent with a lighter long gun sitting between a saker and a culverin.",
-        params: { angle: 14, speed: 145, mass: 3.63, dragCoefficient: 0.45, airDensity: 1.225, area: 0.0082, dt: 0.016 },
+        params: { angle: 14, speed: 145, mass: 3.63, temperature: 15, pressure: 1, diameter: 0.102, dt: 0.016 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Demi_Culverin,_Mary_Rose_-_55130506883.jpg" }
@@ -896,13 +1081,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/english-saker-fort-nelson.jpg",
         imageAlt: "English saker at Fort Nelson",
         imagePosition: "center center",
-        caliber: "3.25 in (83 mm)",
+        diameterLabel: "83 mm",
         projectile: "5.25 lb shot (2.38 kg)",
         muzzleVelocity: "Estimated 164 m/s",
         range: "2,743 m maximum range",
         service: "Tudor and Stuart artillery",
         note: "The simulator launch speed is inferred from the reported maximum range. Real service loads varied substantially across foundries and periods.",
-        params: { angle: 15, speed: 164, mass: 2.38, dragCoefficient: 0.46, airDensity: 1.225, area: 0.0054, dt: 0.016 },
+        params: { angle: 15, speed: 164, mass: 2.38, temperature: 15, pressure: 1, diameter: 0.083, dt: 0.016 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Saker" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker,_Used_by_Chinese_and_Vietnamese,_Fort_Nelson,_Hampshire.jpg" }
@@ -914,13 +1099,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/falconet-wrought-iron-17th-century.jpg",
         imageAlt: "Wrought-iron falconet from the 17th century",
         imagePosition: "center center",
-        caliber: "2.0 in (51 mm)",
+        diameterLabel: "51 mm",
         projectile: "1 lb shot (0.45 kg)",
         muzzleVelocity: "Estimated 122 m/s",
         range: "1,524 m maximum range",
         service: "Light field and fortress artillery",
         note: "This light piece is modeled from its reported maximum range rather than a preserved firing table, so the simulator value is an educational approximation.",
-        params: { angle: 17, speed: 122, mass: 0.45, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0020, dt: 0.018 },
+        params: { angle: 17, speed: 122, mass: 0.45, temperature: 15, pressure: 1, diameter: 0.051, dt: 0.018 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Falconet" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Falconet_wrought_iron_17th_century_(16424842933).jpg" }
@@ -932,13 +1117,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/32-pounder-naval-cannon-raleigh.jpg",
         imageAlt: "Large iron naval cannon used as a representative demi-cannon image",
         imagePosition: "center center",
-        caliber: "6.25 in (159 mm)",
+        diameterLabel: "159 mm",
         projectile: "32 lb shot (14.5 kg)",
         muzzleVelocity: "Modeled 95 m/s",
         range: "488 m effective range",
         service: "Naval broadside artillery",
         note: "The article gives shot class and effective range rather than muzzle velocity. The simulator uses a conservative modeled launch speed and a representative heavy naval gun image.",
-        params: { angle: 11, speed: 95, mass: 14.5, dragCoefficient: 0.44, airDensity: 1.225, area: 0.0198, dt: 0.02 },
+        params: { angle: 11, speed: 95, mass: 14.5, temperature: 15, pressure: 1, diameter: 0.159, dt: 0.02 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-cannon" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:32-pounder_Naval_Cannon_(Raleigh,_NC)_-_DSC05867.JPG" }
@@ -950,13 +1135,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/gribeauval-cannon-de-12.jpg",
         imageAlt: "Canon de 12 Gribeauval at Les Invalides",
         imagePosition: "center center",
-        caliber: "121 mm",
+        diameterLabel: "121 mm",
         projectile: "12 French livres round shot (~5.88 kg)",
         muzzleVelocity: "Estimated 133 m/s",
         range: "1,800 m max range",
         service: "American Revolutionary War, Napoleonic Wars",
         note: "The source used here gives range but not muzzle velocity. The simulator launch speed is inferred from the reported 1,800 m maximum range under an idealized 45° estimate.",
-        params: { angle: 18, speed: 133, mass: 5.88, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0115, dt: 0.02 },
+        params: { angle: 18, speed: 133, mass: 5.88, temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Canon_de_12_Gribeauval" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gribeauval_cannon_de_12_An_2_de_la_Republique.jpg" }
@@ -968,13 +1153,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/gettysburg-12-pounder-napoleon.jpg",
         imageAlt: "M1857 12-pounder Napoleon at Gettysburg",
         imagePosition: "center center",
-        caliber: "4.62 in (117 mm)",
+        diameterLabel: "117 mm",
         projectile: "12 lb round shot (5.44 kg)",
         muzzleVelocity: "439 m/s",
         range: "1,480 m at 5°",
         service: "American Civil War",
         note: "This is a smoothbore gun-howitzer. The preset keeps the round-shot drag model used elsewhere in the simulator.",
-        params: { angle: 12, speed: 439, mass: 5.44, dragCoefficient: 0.47, airDensity: 1.225, area: 0.0108, dt: 0.012 },
+        params: { angle: 12, speed: 439, mass: 5.44, temperature: 15, pressure: 1, diameter: 0.117, dt: 0.012 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/M1857_12-pounder_Napoleon" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gettysburg,_12-pounder_Napoleon.jpg" }
@@ -986,13 +1171,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/cw-arty-3in-ordnance-front.jpg",
         imageAlt: "3-inch ordnance rifle at Gettysburg",
         imagePosition: "center center",
-        caliber: "3.0 in (76 mm)",
+        diameterLabel: "76 mm",
         projectile: "9.5 lb shell (4.3 kg)",
         muzzleVelocity: "370 m/s",
         range: "1,673 m at 5°",
         service: "American Civil War",
-        note: "This preset represents a rifled shell rather than a smooth round shot, so the drag coefficient is modeled lower.",
-        params: { angle: 10, speed: 370, mass: 4.3, dragCoefficient: 0.32, airDensity: 1.225, area: 0.0045, dt: 0.01 },
+        note: "This preset represents a rifled shell rather than a smooth round shot. The simulator still uses the spherical Reynolds-based drag model, so it should be read as an educational approximation.",
+        params: { angle: 10, speed: 370, mass: 4.3, temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/3-inch_ordnance_rifle" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:CW_Arty_3in_Ordnance_front.jpg" }
@@ -1004,13 +1189,13 @@ HTML_PAGE = """<!DOCTYPE html>
         image: "/assets/guns/awm-armstrong-gun-1.jpg",
         imageAlt: "RBL 12-pounder Armstrong gun at the Australian War Memorial",
         imagePosition: "center center",
-        caliber: "3.0 in (76.2 mm)",
+        diameterLabel: "76.2 mm",
         projectile: "11 lb 4 oz common shell (5.10 kg)",
         muzzleVelocity: "378 m/s",
         range: "3,109 m",
         service: "Second Opium War, New Zealand Wars",
-        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight and a lower drag coefficient than smoothbore round shot.",
-        params: { angle: 8, speed: 378, mass: 5.1, dragCoefficient: 0.32, airDensity: 1.225, area: 0.0046, dt: 0.01 },
+        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight, but the simulation still applies the spherical Reynolds-based drag model as a simplified approximation.",
+        params: { angle: 8, speed: 378, mass: 5.1, temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/RBL_12-pounder_8_cwt_Armstrong_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:AWM-Armstrong-gun-1.jpg" }
@@ -1049,9 +1234,9 @@ HTML_PAGE = """<!DOCTYPE html>
       defaults,
       ...Object.values(presets),
       ...Object.values(historicalGuns).map((gun) => gun.params),
-      { ...defaults, angle: 45, speed: 440, airDensity: 0 },
-      { ...defaults, angle: 85, speed: 440, airDensity: 0 },
-      { ...defaults, angle: 45, speed: 440, mass: 20, dragCoefficient: 0.05, airDensity: 1.225, area: 0.001 }
+      { ...defaults, angle: 45, speed: 440, pressure: 0 },
+      { ...defaults, angle: 85, speed: 440, pressure: 0 },
+      { ...defaults, angle: 45, speed: 440, mass: 20, temperature: -10, pressure: 1.2, diameter: 0.01 }
     ];
 
     const FIXED_PLOT_BOUNDS = plotReferenceScenarios.reduce((bounds, params) => {
@@ -1076,9 +1261,9 @@ HTML_PAGE = """<!DOCTYPE html>
         angle: Number(controls.angle.value),
         speed: Number(controls.speed.value),
         mass: Number(controls.mass.value),
-        dragCoefficient: Number(controls.dragCoefficient.value),
-        airDensity: Number(controls.airDensity.value),
-        area: Number(controls.area.value),
+        temperature: Number(controls.temperature.value),
+        pressure: Number(controls.pressure.value),
+        diameter: Number(controls.diameter.value),
         dt: Number(controls.dt.value)
       };
     }
@@ -1152,7 +1337,7 @@ HTML_PAGE = """<!DOCTYPE html>
       gunHoverImage.style.objectPosition = gun.imagePosition || "center center";
       gunHoverImage.style.transform = `scale(${gun.imageScale || 1})`;
       gunHoverSpecs.innerHTML = `
-        <span><strong>Caliber:</strong> ${gun.caliber}</span>
+        <span><strong>Diameter:</strong> ${gun.diameterLabel}</span>
         <span><strong>Projectile:</strong> ${gun.projectile}</span>
         <span><strong>Muzzle velocity:</strong> ${gun.muzzleVelocity}</span>
         <span><strong>Service:</strong> ${gun.service}</span>
@@ -1177,6 +1362,68 @@ HTML_PAGE = """<!DOCTYPE html>
       document.getElementById("hero-angle").textContent = formatters.angle(state.params.angle);
       document.getElementById("hero-speed").textContent = formatters.speed(state.params.speed);
       document.getElementById("hero-mode").textContent = state.currentGun ? historicalGuns[state.currentGun].name : "Ideal + Drag";
+    }
+
+    function temperatureToKelvin(temperatureC) {
+      return temperatureC + 273.15;
+    }
+
+    function pressureToPa(pressureAtm) {
+      return pressureAtm * 101325;
+    }
+
+    function airDensityFromParams(params) {
+      const temperatureK = temperatureToKelvin(params.temperature);
+      if (temperatureK <= 0) {
+        return 0;
+      }
+      return pressureToPa(params.pressure) / (AIR_GAS_CONSTANT * temperatureK);
+    }
+
+    function dynamicViscosity(temperatureC) {
+      const temperatureK = temperatureToKelvin(temperatureC);
+      if (temperatureK <= 0) {
+        return 0;
+      }
+      return SUTHERLAND_MU0 * ((temperatureK / SUTHERLAND_T0) ** 1.5) * ((SUTHERLAND_T0 + SUTHERLAND_S) / (temperatureK + SUTHERLAND_S));
+    }
+
+    function sphereArea(diameter) {
+      return Math.PI * diameter * diameter / 4;
+    }
+
+    function reynoldsNumber(density, speed, diameter, viscosity) {
+      if (density <= 0 || speed <= 0 || diameter <= 0 || viscosity <= 0) {
+        return 0;
+      }
+      return density * speed * diameter / viscosity;
+    }
+
+    function dragCoefficientForReynolds(reynolds) {
+      if (reynolds <= 0) {
+        return 0;
+      }
+      if (reynolds < 0.1) {
+        return 24 / reynolds;
+      }
+      if (reynolds < 1000) {
+        return (24 / reynolds) * (1 + 0.15 * (reynolds ** 0.687));
+      }
+      return 0.44;
+    }
+
+    function aerodynamicState(speed, params, density, viscosity, area) {
+      const reynolds = reynoldsNumber(density, speed, params.diameter, viscosity);
+      const dragCoefficient = dragCoefficientForReynolds(reynolds);
+      const dragForce = 0.5 * density * dragCoefficient * area * speed * speed;
+      return {
+        airDensity: density,
+        viscosity,
+        area,
+        reynolds,
+        dragCoefficient,
+        dragForce
+      };
     }
 
     function simulateIdeal(params) {
@@ -1216,19 +1463,35 @@ HTML_PAGE = """<!DOCTYPE html>
       let vx = params.speed * Math.cos(theta);
       let vy = params.speed * Math.sin(theta);
       const dt = params.dt;
-      const points = [{ x, y, t: 0, vx, vy }];
+      const density = airDensityFromParams(params);
+      const viscosity = dynamicViscosity(params.temperature);
+      const area = sphereArea(params.diameter);
+      let aero = aerodynamicState(Math.hypot(vx, vy), params, density, viscosity, area);
+      const points = [{ x, y, t: 0, vx, vy, ...aero }];
       let t = 0;
       let maxHeight = 0;
       let peak = { x: 0, y: 0 };
-      const dragConstant = 0.5 * params.airDensity * params.dragCoefficient * params.area / params.mass;
 
       for (let i = 0; i < 25000; i += 1) {
-        const speed = Math.hypot(vx, vy);
-        const ax = speed === 0 ? 0 : -dragConstant * speed * vx;
-        const ay = -9.81 - (speed === 0 ? 0 : dragConstant * speed * vy);
+        let iterVx = vx;
+        let iterVy = vy;
+        let iterAero = aero;
 
-        vx += ax * dt;
-        vy += ay * dt;
+        for (let iteration = 0; iteration < 4; iteration += 1) {
+          const speed = Math.hypot(iterVx, iterVy);
+          iterAero = aerodynamicState(speed, params, density, viscosity, area);
+          const dragAccelScale = speed === 0 ? 0 : iterAero.dragForce / (params.mass * speed);
+          const ax = -dragAccelScale * iterVx;
+          const ay = -9.81 - (dragAccelScale * iterVy);
+          const nextVx = vx + (ax * dt);
+          const nextVy = vy + (ay * dt);
+          iterVx = 0.5 * (iterVx + nextVx);
+          iterVy = 0.5 * (iterVy + nextVy);
+        }
+
+        vx = iterVx;
+        vy = iterVy;
+        aero = aerodynamicState(Math.hypot(vx, vy), params, density, viscosity, area);
         x += vx * dt;
         y += vy * dt;
         t += dt;
@@ -1243,7 +1506,7 @@ HTML_PAGE = """<!DOCTYPE html>
           const ratio = prev.y / (prev.y - y || 1);
           const impactX = prev.x + (x - prev.x) * ratio;
           const impactT = prev.t + (t - prev.t) * ratio;
-          points.push({ x: impactX, y: 0, t: impactT, vx, vy });
+          points.push({ x: impactX, y: 0, t: impactT, vx, vy, ...aero });
           return {
             points,
             metrics: {
@@ -1252,11 +1515,22 @@ HTML_PAGE = """<!DOCTYPE html>
               flightTime: impactT,
               finalSpeed: Math.hypot(vx, vy),
               peak
+            },
+            aero: {
+              airDensity: density,
+              viscosity,
+              area,
+              launchReynolds: points[0].reynolds,
+              launchDragCoefficient: points[0].dragCoefficient,
+              launchDragForce: points[0].dragForce,
+              impactReynolds: aero.reynolds,
+              impactDragCoefficient: aero.dragCoefficient,
+              impactDragForce: aero.dragForce
             }
           };
         }
 
-        points.push({ x, y, t, vx, vy });
+        points.push({ x, y, t, vx, vy, ...aero });
       }
 
       return {
@@ -1267,6 +1541,17 @@ HTML_PAGE = """<!DOCTYPE html>
           flightTime: t,
           finalSpeed: Math.hypot(vx, vy),
           peak
+        },
+        aero: {
+          airDensity: density,
+          viscosity,
+          area,
+          launchReynolds: points[0].reynolds,
+          launchDragCoefficient: points[0].dragCoefficient,
+          launchDragForce: points[0].dragForce,
+          impactReynolds: aero.reynolds,
+          impactDragCoefficient: aero.dragCoefficient,
+          impactDragForce: aero.dragForce
         }
       };
     }
@@ -1281,22 +1566,28 @@ HTML_PAGE = """<!DOCTYPE html>
 
     function renderMetrics() {
       const rows = [];
+      const dragAero = state.drag.aero;
       rows.push(metricCard("Ideal range", state.ideal.metrics.range, "m", `Time ${state.ideal.metrics.flightTime.toFixed(2)} s`));
       rows.push(metricCard("Ideal max height", state.ideal.metrics.maxHeight, "m", `Impact speed ${state.ideal.metrics.finalSpeed.toFixed(2)} m/s`));
       rows.push(metricCard("Drag range", state.drag.metrics.range, "m", `Time ${state.drag.metrics.flightTime.toFixed(2)} s`));
       rows.push(metricCard("Drag max height", state.drag.metrics.maxHeight, "m", `Impact speed ${state.drag.metrics.finalSpeed.toFixed(2)} m/s`));
       const deltaRange = state.ideal.metrics.range - state.drag.metrics.range;
-      const angleHint = state.params.airDensity > 0 ? "Lower angles often win with drag." : "Vacuum restores the 45° symmetry.";
+      const angleHint = dragAero.airDensity > 0 ? "Lower angles often win with drag." : "Vacuum restores the 45° symmetry.";
       rows.push(metricCard("Range loss to drag", deltaRange, "m", angleHint));
+      rows.push(metricCard("Air density", dragAero.airDensity, "kg/m³", `From ${state.params.temperature.toFixed(1)} °C and ${state.params.pressure.toFixed(2)} atm`));
+      rows.push(metricCard("Launch Reynolds", dragAero.launchReynolds, "", `Diameter ${state.params.diameter.toFixed(3)} m`));
+      rows.push(metricCard("Launch drag coefficient", dragAero.launchDragCoefficient, "", `Sphere correlation from Reynolds number`));
+      rows.push(metricCard("Launch drag force", dragAero.launchDragForce, "N", `Area ${dragAero.area.toFixed(4)} m²`));
       rows.push(metricCard("Time step", state.params.dt, "s", "Smaller steps improve stability but cost more frames."));
       metricsEl.innerHTML = rows.join("");
     }
 
     function metricCard(label, value, unit, note) {
+      const suffix = unit ? ` ${unit}` : "";
       return `
         <article class="metric">
           <div class="label">${label}</div>
-          <strong>${value.toFixed(2)} ${unit}</strong>
+          <strong>${value.toFixed(2)}${suffix}</strong>
           <small>${note}</small>
         </article>
       `;
