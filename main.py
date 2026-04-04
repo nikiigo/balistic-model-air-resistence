@@ -937,7 +937,7 @@ HTML_PAGE = """<!DOCTYPE html>
             </label>
             <label>
               <span class="control-header"><span>Air pressure</span><span class="value" data-out="pressure">1.00 atm</span></span>
-              <input id="pressure" type="range" min="0" max="1.2" step="0.01" value="1">
+              <input id="pressure" type="range" min="0.2" max="1.2" step="0.01" value="1">
             </label>
             <label>
               <span class="control-header"><span>Projectile diameter</span><span class="value" data-out="diameter">0.113 m</span></span>
