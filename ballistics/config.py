@@ -5,6 +5,7 @@ import os
 from ballistics.constants import (
     ALLOWED_ORIGINS_ENV_VAR,
     API_KEY_ENV_VAR,
+    ENABLE_CHALLENGE_ENV_VAR,
     LOCAL_DEVELOPMENT_SESSION_SECRET,
     PUBLIC_MODE_ENV_VAR,
     SESSION_SECRET_ENV_VAR,
@@ -33,6 +34,13 @@ def configured_allowed_origins() -> set[str]:
 
 def public_mode_enabled() -> bool:
     return os.environ.get(PUBLIC_MODE_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def bootstrap_challenge_enabled() -> bool:
+    raw = os.environ.get(ENABLE_CHALLENGE_ENV_VAR, "").strip().lower()
+    if not raw:
+        return True
+    return raw in {"1", "true", "yes", "on"}
 
 
 _runtime_warning_flags = {

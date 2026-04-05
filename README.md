@@ -63,7 +63,7 @@ Included presets cover:
 - 24-pounder long gun
 - Paixhans gun
 
-The historical presets are educational approximations. Some launchers lack directly documented release velocity data, so the simulator uses either a spherical shot model or a simplified nonspherical projectile model depending on the preset.
+The historical presets are educational approximations. Some launchers lack directly documented release velocity data, so the simulator uses either a spherical shot model or a simplified streamlined-projectile model depending on the preset.
 
 ## Physics Model
 
@@ -78,8 +78,8 @@ But the aerodynamic terms are derived dynamically:
 - speed of sound from the ideal-gas relation for air
 - Mach number from instantaneous projectile speed and local speed of sound
 - Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
-- base drag coefficient from a piecewise sphere `Cd(Re)` correlation for round shot and a nonspherical `Cd(Re, sphericity)` correlation for elongated shell-like projectiles
-- an approximate Mach-aware compressibility multiplier applied on top of that base drag coefficient for high-speed flow
+- base drag coefficient from a piecewise sphere `Cd(Re)` correlation for round shot and a bounded streamlined-shell form factor for elongated shell-like projectiles
+- an approximate Mach-aware compressibility multiplier applied on top of that base drag coefficient for high-speed flow, with a milder transonic rise for shell-like projectiles than for spheres
 - projectile area from diameter
 - projectile mass from material density and a shape-aware projectile volume approximation
 
@@ -110,7 +110,7 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 
 - 2D planar point-mass motion only
 - round shot uses a spherical projectile model
-- shell presets use a simplified elongated-projectile drag model
+- shell presets use a simplified elongated-projectile drag model tuned to avoid the unrealistically large drag penalties produced by generic nonspherical particle correlations
 - pressure is clamped to a minimum supported value of `0.001 atm`
 - compressibility is handled with an approximate Mach-aware drag correction, not a fitted `Cd(Re, Ma)` table or a full transonic/supersonic aerodynamic model
 - no wind
@@ -147,7 +147,7 @@ You can also bind a different interface or port:
 python3 main.py --host 127.0.0.1 --port 8888
 ```
 
-This server is intended for local use. It has basic request validation, but it is not designed as an internet-facing service with authentication, rate limiting, or production hardening.
+This server is still suitable for local use, but it now also supports a basic internet-facing browser deployment model behind a reverse proxy. Application-layer protections include browser sessions, CSRF checks, origin allowlists, and an optional bootstrap challenge. It is still not a complete standalone internet edge service: TLS, throttling, and network exposure controls should remain at the proxy and host layers.
 For browser-testing the deployment path locally, you can also run:
 
 ```bash
@@ -174,6 +174,8 @@ Example production-style Gunicorn command bound to localhost:
 BALLISTICS_PUBLIC_MODE=1 \
 BALLISTICS_SESSION_SECRET=change-this-too \
 BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example \
+# Optional:
+# BALLISTICS_ENABLE_CHALLENGE=0 \
 .venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 30 main:application
 ```
 
@@ -191,6 +193,8 @@ WorkingDirectory=/absolute/path/to/balistic-model-air-resistence
 Environment=BALLISTICS_PUBLIC_MODE=1
 Environment=BALLISTICS_SESSION_SECRET=change-this-too
 Environment=BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example
+# Optional:
+# Environment=BALLISTICS_ENABLE_CHALLENGE=0
 # Optional:
 # Environment=BALLISTICS_API_KEY=change-me
 ExecStart=/absolute/path/to/balistic-model-air-resistence/.venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 30 main:application
@@ -251,20 +255,26 @@ Optional hardening environment variables:
 - `BALLISTICS_API_KEY`: optional shared secret for trusted non-browser or upstream callers; it is not required for the public browser-session flow
 - `BALLISTICS_SESSION_SECRET`: HMAC secret used to issue browser session cookies and CSRF tokens
 - `BALLISTICS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call `/api/simulate` when an `Origin` header is present
+- `BALLISTICS_ENABLE_CHALLENGE`: set to `0` to disable the browser bootstrap question gate; defaults to enabled, and when disabled the server issues the browser session immediately on `GET /`
 
 Example:
 
 ```bash
 BALLISTICS_PUBLIC_MODE=1 \
-BALLISTICS_API_KEY=change-me \
 BALLISTICS_SESSION_SECRET=change-this-too \
 BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example \
+# Optional:
+# BALLISTICS_ENABLE_CHALLENGE=0 \
+# Optional:
+# BALLISTICS_API_KEY=change-me \
 .venv/bin/gunicorn main:application
 ```
 
-Browser requests now use a server-issued session cookie plus a CSRF token injected into the HTML page. The browser challenge/bootstrap step creates that session after a correct answer.
+Browser requests use a server-issued session cookie plus a CSRF token injected into the HTML page.
 
-On a new browser visit, the page first presents a lightweight physics challenge. A correct answer upgrades the browser into a real simulation session and enables `/api/simulate`.
+With the default challenge-enabled mode, a new browser visit first presents a lightweight physics challenge. A correct answer upgrades the browser into a real simulation session and enables `/api/simulate`.
+
+If `BALLISTICS_ENABLE_CHALLENGE=0`, the browser skips that question gate and receives the session immediately.
 
 This is basic application-layer hardening, not full production security by itself. If the service is internet-facing, TLS, request throttling, and network exposure controls should still be enforced by the reverse proxy and host environment.
 
@@ -289,7 +299,11 @@ Useful manual checks:
 
 ## Project Structure
 
-- [main.py](main.py): WSGI application, local dev server entrypoint, HTML, CSS, JavaScript, and Python physics helpers
+- [main.py](main.py): thin local entrypoint and compatibility import surface
+- [ballistics/physics](ballistics/physics): ideal-flight and drag/atmosphere physics helpers
+- [ballistics/web](ballistics/web): WSGI routing, auth, challenge, page rendering, and embedded template
+- [ballistics/schemas.py](ballistics/schemas.py): simulation request normalization and response shaping
+- [ballistics/presets.py](ballistics/presets.py): preset and plot-reference data
 - [requirements.txt](requirements.txt): runtime Python dependency pins
 - browser rendering calls the local `/api/simulate` endpoint for ideal and drag trajectories
 - [tests/test_physics.py](tests/test_physics.py): analytical and aerodynamic regression tests

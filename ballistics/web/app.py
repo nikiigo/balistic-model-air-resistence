@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 
-from ballistics.config import emit_runtime_warnings, runtime_configuration_error
+from ballistics.config import bootstrap_challenge_enabled, emit_runtime_warnings, runtime_configuration_error
 from ballistics.constants import ASSETS_DIR, MAX_REQUEST_BODY_BYTES, RESOLVED_ASSETS_DIR
 from ballistics.schemas import simulation_response
 from ballistics.web.auth import (
@@ -80,8 +80,12 @@ def create_application(html_page: str):
             bootstrap_challenge = None
             extra_headers = None
             if session_id is None:
-                bootstrap_challenge = generate_bootstrap_challenge()
-                bootstrap_challenge["required"] = True
+                if bootstrap_challenge_enabled():
+                    bootstrap_challenge = generate_bootstrap_challenge()
+                    bootstrap_challenge["required"] = True
+                else:
+                    session_id = new_session_id()
+                    extra_headers = [session_cookie_header(session_id)]
             else:
                 extra_headers = [session_cookie_header(session_id)]
             return wsgi_response(

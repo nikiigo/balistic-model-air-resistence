@@ -8,6 +8,7 @@ from unittest.mock import patch
 from main import (
     ALLOWED_ORIGINS_ENV_VAR,
     API_KEY_ENV_VAR,
+    ENABLE_CHALLENGE_ENV_VAR,
     FIXED_PLOT_BOUNDS,
     G,
     HISTORICAL_GUN_PLOT_BOUNDS,
@@ -148,6 +149,15 @@ class ServerHardeningTests(unittest.TestCase):
         self.assertNotIn("__CSRF_TOKEN__", rendered)
         self.assertIn('const INITIAL_CSRF_TOKEN = "";', rendered)
         self.assertRegex(rendered, r'const BOOTSTRAP_CHALLENGE = \{.*"required":true.*\};')
+
+    def test_index_can_issue_session_immediately_when_challenge_disabled(self) -> None:
+        with patch.dict("os.environ", {ENABLE_CHALLENGE_ENV_VAR: "0"}, clear=False):
+            status, headers, body = self.wsgi_request(path="/", method="GET", body=b"")
+        self.assertEqual(status, "200 OK")
+        self.assertIn("Set-Cookie", headers)
+        rendered = body.decode("utf-8")
+        self.assertNotIn('const INITIAL_CSRF_TOKEN = "";', rendered)
+        self.assertIn('const BOOTSTRAP_CHALLENGE = {"required":false};', rendered)
 
     def test_browser_session_can_call_api_with_cookie_and_csrf(self) -> None:
         session_id, csrf = self.bootstrap_browser_session()

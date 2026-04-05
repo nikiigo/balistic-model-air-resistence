@@ -5,6 +5,7 @@ import math
 from wsgiref.simple_server import make_server
 
 from ballistics.config import (
+    bootstrap_challenge_enabled,
     configured_allowed_origins,
     configured_api_key,
     configured_session_secret,
@@ -20,6 +21,7 @@ from ballistics.constants import (
     ASSETS_DIR,
     BASE_DIR,
     BOOTSTRAP_CHALLENGE_TTL_SECONDS,
+    ENABLE_CHALLENGE_ENV_VAR,
     G,
     MAX_ANGLE_DEG,
     MAX_DIAMETER_M,

@@ -176,6 +176,7 @@ class DragSimulationRegressionTests(unittest.TestCase):
             sphericity=0.65,
         )
         self.assertNotAlmostEqual(shell["drag_coefficient"], sphere["drag_coefficient"], places=6)
+        self.assertLess(shell["drag_coefficient"], sphere["drag_coefficient"])
 
     def test_high_mach_flow_increases_drag_coefficient_above_base_reynolds_value(self) -> None:
         subsonic = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
@@ -186,6 +187,18 @@ class DragSimulationRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(subsonic["drag_coefficient"], subsonic["base_drag_coefficient"], places=9)
         self.assertGreater(transonic["drag_coefficient"], transonic["base_drag_coefficient"])
         self.assertGreater(transonic["drag_coefficient"], subsonic["drag_coefficient"])
+
+    def test_artillery_shell_launch_drag_coefficient_stays_in_reasonable_range(self) -> None:
+        shell = aerodynamic_state(
+            speed=370.0,
+            temperature_c=15.0,
+            pressure_atm=1.0,
+            diameter=0.076,
+            projectile_shape="shell",
+            sphericity=0.66,
+        )
+        self.assertGreater(shell["mach"], 1.0)
+        self.assertLess(shell["drag_coefficient"], 1.0)
 
     def test_rk4_solution_converges_as_time_step_shrinks(self) -> None:
         coarse = simulate_drag_reference({**self.base_params(), "dt": 0.02})
@@ -219,3 +232,21 @@ class DragSimulationRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(ideal["metrics"]["range"], analytical["range"], places=9)
         self.assertAlmostEqual(ideal["metrics"]["maxHeight"], analytical["max_height"], places=9)
         self.assertAlmostEqual(ideal["metrics"]["flightTime"], analytical["flight_time"], places=9)
+
+    def test_streamlined_shell_range_is_not_crushed_by_particle_drag_correlation(self) -> None:
+        params = {
+            "angle": 10.0,
+            "speed": 370.0,
+            "materialDensity": material_density_from_mass_and_diameter(4.3, 0.076, 2.4),
+            "temperature": 15.0,
+            "pressure": 1.0,
+            "diameter": 0.076,
+            "dt": 0.01,
+            "projectileShape": "shell",
+            "sphericity": 0.66,
+            "volumeFactor": 2.4,
+        }
+        drag = simulate_drag_reference(params)
+        ideal = simulate_ideal_reference(params)
+        self.assertGreater(drag["metrics"]["range"], 1500.0)
+        self.assertGreater(drag["metrics"]["range"] / ideal["metrics"]["range"], 0.3)

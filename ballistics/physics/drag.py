@@ -117,21 +117,26 @@ def material_density_from_mass_and_diameter(mass: float, diameter: float, volume
 def drag_coefficient_nonspherical(reynolds: float, sphericity: float) -> float:
     if reynolds <= 0 or sphericity <= 0 or sphericity > 1:
         return 0.0
-    a = math.exp(2.3288 - (6.4581 * sphericity) + (2.4486 * sphericity * sphericity))
-    b = 0.0964 + (0.5565 * sphericity)
-    c = math.exp(
-        4.905
-        - (13.8944 * sphericity)
-        + (18.4222 * sphericity * sphericity)
-        - (10.2599 * sphericity * sphericity * sphericity)
-    )
-    d = math.exp(
-        1.4681
-        + (12.2584 * sphericity)
-        - (20.7322 * sphericity * sphericity)
-        + (15.8855 * sphericity * sphericity * sphericity)
-    )
-    return (24.0 / reynolds) * (1.0 + (a * (reynolds**b))) + (c / (1.0 + (d / reynolds)))
+    # The old Haider-Levenspiel particle correlation drastically overpredicted
+    # drag for streamlined artillery-style projectiles at high Reynolds number.
+    # For this simulator, the "shell" branch is intended to represent elongated,
+    # relatively streamlined projectiles, so use the spherical base correlation
+    # with a bounded streamlining factor instead.
+    sphere_base_drag = drag_coefficient_sphere(reynolds)
+    streamlining_factor = interpolate(sphericity, 0.35, 1.0, 0.38, 1.0)
+    return sphere_base_drag * streamlining_factor
+
+
+def compressibility_drag_multiplier_shell(mach: float) -> float:
+    if mach <= 0.7:
+        return 1.0
+    if mach < 0.95:
+        return interpolate(mach, 0.7, 0.95, 1.0, 1.18)
+    if mach < 1.1:
+        return interpolate(mach, 0.95, 1.1, 1.18, 1.55)
+    if mach < 1.5:
+        return interpolate(mach, 1.1, 1.5, 1.55, 1.35)
+    return 1.35
 
 
 def compressibility_drag_multiplier(mach: float) -> float:
@@ -162,9 +167,10 @@ def aerodynamic_state(
     mach = mach_number(speed, temperature_c)
     if projectile_shape == "shell":
         base_drag_coefficient = drag_coefficient_nonspherical(reynolds, sphericity)
+        drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier_shell(mach)
     else:
         base_drag_coefficient = drag_coefficient_sphere(reynolds)
-    drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(mach)
+        drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(mach)
     drag_force = 0.5 * density * drag_coefficient * area * speed * speed
     return {
         "air_density": density,
