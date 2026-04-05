@@ -1,13 +1,37 @@
+import json
 import math
+import re
 import unittest
+from pathlib import Path
+from unittest.mock import patch
+from io import BytesIO
 
 from main import (
+    ALLOWED_ORIGINS_ENV_VAR,
+    API_KEY_ENV_VAR,
+    PUBLIC_MODE_ENV_VAR,
+    SESSION_COOKIE_NAME,
+    SESSION_SECRET_ENV_VAR,
     AIR_GAS_CONSTANT,
     AIR_HEAT_CAPACITY_RATIO,
+    FIXED_PLOT_BOUNDS,
     G,
+    HISTORICAL_GUN_PLOT_BOUNDS,
     HTML_PAGE,
+    MAX_DT,
+    MAX_REQUEST_BODY_BYTES,
+    MAX_SPEED,
     MIN_PRESSURE_ATM,
+    MIN_DT,
+    MIN_MATERIAL_DENSITY,
+    MIN_SPHERICITY,
+    MIN_VOLUME_FACTOR,
     SUTHERLAND_MU0,
+    application,
+    challenge_answer_is_correct,
+    verify_signed_payload,
+    runtime_configuration_error,
+    normalize_simulation_params,
     aerodynamic_state,
     air_density_from_conditions,
     analytical_metrics,
@@ -23,6 +47,8 @@ from main import (
     speed_of_sound_air,
     material_density_from_mass_and_diameter,
     mass_from_material_density,
+    simulation_response,
+    simulate_ideal_reference,
     sphere_area_from_diameter,
 )
 
@@ -201,26 +227,217 @@ class DragSimulationRegressionTests(unittest.TestCase):
         self.assertGreater(medium_error, fine_error)
         self.assertLess(fine_error, 0.05)
 
+    def test_impact_metrics_match_interpolated_final_point_state(self) -> None:
+        result = simulate_drag_reference({**self.base_params(), "dt": 0.02})
+        final_point = result["points"][-1]
+
+        self.assertEqual(final_point["y"], 0.0)
+        self.assertAlmostEqual(result["metrics"]["final_speed"], math.hypot(final_point["vx"], final_point["vy"]), places=9)
+        self.assertAlmostEqual(result["aero"]["impact_reynolds"], final_point["reynolds"], places=9)
+        self.assertAlmostEqual(result["aero"]["impact_drag_coefficient"], final_point["drag_coefficient"], places=9)
+        self.assertAlmostEqual(result["aero"]["impact_drag_force"], final_point["drag_force"], places=9)
+
+    def test_ideal_reference_matches_closed_form_metrics(self) -> None:
+        params = self.base_params()
+        ideal = simulate_ideal_reference(params)
+        analytical = analytical_metrics(params["speed"], params["angle"])
+
+        self.assertAlmostEqual(ideal["metrics"]["range"], analytical["range"], places=9)
+        self.assertAlmostEqual(ideal["metrics"]["maxHeight"], analytical["max_height"], places=9)
+        self.assertAlmostEqual(ideal["metrics"]["flightTime"], analytical["flight_time"], places=9)
+
+
+class SimulationApiTests(unittest.TestCase):
+    def test_normalize_simulation_params_clamps_untrusted_numeric_input(self) -> None:
+        params = normalize_simulation_params({
+            "speed": 100000,
+            "pressure": -5,
+            "dt": 0,
+            "materialDensity": -20,
+            "projectileShape": "shell",
+            "sphericity": 0,
+            "volumeFactor": -1,
+        })
+
+        self.assertEqual(params["speed"], MAX_SPEED)
+        self.assertEqual(params["pressure"], MIN_PRESSURE_ATM)
+        self.assertEqual(params["dt"], MIN_DT)
+        self.assertEqual(params["materialDensity"], MIN_MATERIAL_DENSITY)
+        self.assertEqual(params["sphericity"], MIN_SPHERICITY)
+        self.assertEqual(params["volumeFactor"], MIN_VOLUME_FACTOR)
+
+    def test_normalize_simulation_params_rejects_non_finite_values(self) -> None:
+        with self.assertRaises(ValueError):
+            normalize_simulation_params({"speed": float("inf")})
+
+    def test_simulation_response_uses_python_reference_solver(self) -> None:
+        params = {
+            "angle": 35.0,
+            "speed": 120.0,
+            "materialDensity": material_density_from_mass_and_diameter(5.0, 0.1),
+            "temperature": 15.0,
+            "pressure": 1.0,
+            "diameter": 0.1,
+            "dt": 0.01,
+        }
+        response = simulation_response(params)
+
+        self.assertIn("ideal", response)
+        self.assertIn("drag", response)
+        self.assertIn("focusedBounds", response)
+        self.assertEqual(response["stableBounds"], FIXED_PLOT_BOUNDS)
+        self.assertAlmostEqual(response["ideal"]["metrics"]["range"], analytical_metrics(120.0, 35.0)["range"], places=9)
+
+    def test_simulation_response_uses_historical_stable_bounds_when_launcher_selected(self) -> None:
+        response = simulation_response({"currentGun": "ballista"})
+        self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["ballista"])
+
+
+class ServerHardeningTests(unittest.TestCase):
+    def wsgi_request(self, *, path: str = "/api/simulate", method: str = "POST", body: bytes = b"{}", extra_environ: dict | None = None):
+        captured: dict[str, object] = {}
+
+        def start_response(status, headers):
+            captured["status"] = status
+            captured["headers"] = dict(headers)
+
+        environ = {
+            "REQUEST_METHOD": method,
+            "PATH_INFO": path,
+            "CONTENT_LENGTH": str(len(body)),
+            "wsgi.input": BytesIO(body),
+        }
+        if extra_environ:
+            environ.update(extra_environ)
+        response_body = b"".join(application(environ, start_response))
+        return captured["status"], captured["headers"], response_body
+
+    def bootstrap_browser_session(self) -> tuple[str, str]:
+        status, _, body = self.wsgi_request(path="/", method="GET", body=b"")
+        self.assertEqual(status, "200 OK")
+        rendered = body.decode("utf-8")
+        match = re.search(r"const BOOTSTRAP_CHALLENGE = (\{.*?\});", rendered)
+        self.assertIsNotNone(match)
+        challenge = json.loads(match.group(1))
+        token_payload = verify_signed_payload(challenge["token"])
+        self.assertIsNotNone(token_payload)
+        if token_payload["kind"] == "vacuum_max_range_angle":
+            answer = "45"
+        elif token_payload["kind"] == "complementary_angle":
+            answer = str(90 - token_payload["baseAngle"])
+        else:
+            answer = f"{round((2.0 * token_payload['speed']) / G, 1):.1f}"
+        self.assertTrue(challenge_answer_is_correct(token_payload, answer))
+        status, headers, body = self.wsgi_request(
+            path="/session/bootstrap",
+            body=json.dumps({"token": challenge["token"], "answer": answer}).encode("utf-8"),
+        )
+        self.assertEqual(status, "200 OK")
+        payload = json.loads(body.decode("utf-8"))
+        session_id = re.search(rf"{SESSION_COOKIE_NAME}=([^;]+)", headers["Set-Cookie"]).group(1)
+        return session_id, payload["csrfToken"]
+
+    def test_asset_path_containment_uses_resolved_relative_check(self) -> None:
+        self.assertIn("asset_path.is_relative_to(RESOLVED_ASSETS_DIR)", Path("main.py").read_text())
+
+    def test_api_body_size_limit_is_enforced_in_handler(self) -> None:
+        self.assertIn("Request body too large.", Path("main.py").read_text())
+        self.assertGreater(MAX_REQUEST_BODY_BYTES, 0)
+
+    def test_wsgi_application_entrypoint_exists(self) -> None:
+        self.assertTrue(callable(application))
+        self.assertIn("make_server(args.host, args.port, application)", Path("main.py").read_text())
+
+    def test_wsgi_sets_security_headers(self) -> None:
+        status, headers, _ = self.wsgi_request(path="/", method="GET", body=b"")
+        self.assertEqual(status, "200 OK")
+        self.assertIn("Content-Security-Policy", headers)
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(headers["Referrer-Policy"], "no-referrer")
+
+    def test_index_sets_session_cookie_and_renders_csrf_token(self) -> None:
+        status, headers, body = self.wsgi_request(path="/", method="GET", body=b"")
+        self.assertEqual(status, "200 OK")
+        rendered = body.decode("utf-8")
+        self.assertNotIn("__CSRF_TOKEN__", rendered)
+        self.assertIn('const INITIAL_CSRF_TOKEN = "";', rendered)
+        self.assertRegex(rendered, r'const BOOTSTRAP_CHALLENGE = \{.*"required":true.*\};')
+
+    def test_browser_session_can_call_api_with_cookie_and_csrf(self) -> None:
+        session_id, csrf = self.bootstrap_browser_session()
+        status, _, body = self.wsgi_request(
+            extra_environ={
+                "HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={session_id}",
+                "HTTP_X_CSRF_TOKEN": csrf,
+            }
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertIn(b'"ideal"', body)
+
+    def test_browser_session_without_csrf_is_rejected(self) -> None:
+        session_id, _ = self.bootstrap_browser_session()
+        status, _, body = self.wsgi_request(extra_environ={"HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={session_id}"})
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertIn(b"Unauthorized", body)
+
+    def test_api_key_is_required_when_configured(self) -> None:
+        with patch.dict("os.environ", {API_KEY_ENV_VAR: "secret"}, clear=False):
+            status, _, body = self.wsgi_request()
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertIn(b"Unauthorized", body)
+
+    def test_api_key_allows_request_when_header_matches(self) -> None:
+        with patch.dict("os.environ", {API_KEY_ENV_VAR: "secret"}, clear=False):
+            status, _, body = self.wsgi_request(extra_environ={"HTTP_X_API_KEY": "secret"})
+        self.assertEqual(status, "200 OK")
+        self.assertIn(b'"ideal"', body)
+
+    def test_origin_is_rejected_when_not_allowlisted(self) -> None:
+        with patch.dict("os.environ", {ALLOWED_ORIGINS_ENV_VAR: "https://example.com", API_KEY_ENV_VAR: "secret"}, clear=False):
+            status, _, body = self.wsgi_request(extra_environ={"HTTP_ORIGIN": "https://evil.example", "HTTP_X_API_KEY": "secret"})
+        self.assertEqual(status, "403 Forbidden")
+        self.assertIn(b"Origin not allowed", body)
+
+    def test_allowlisted_origin_is_accepted(self) -> None:
+        with patch.dict("os.environ", {ALLOWED_ORIGINS_ENV_VAR: "https://example.com", API_KEY_ENV_VAR: "secret"}, clear=False):
+            status, _, body = self.wsgi_request(extra_environ={"HTTP_ORIGIN": "https://example.com", "HTTP_X_API_KEY": "secret"})
+        self.assertEqual(status, "200 OK")
+        self.assertIn(b'"drag"', body)
+
+    def test_public_mode_requires_api_key(self) -> None:
+        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1"}, clear=False):
+            self.assertIn(API_KEY_ENV_VAR, runtime_configuration_error() or "")
+            status, _, body = self.wsgi_request()
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertIn(API_KEY_ENV_VAR.encode("utf-8"), body)
+
+    def test_public_mode_requires_session_secret_and_allowed_origins(self) -> None:
+        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1", API_KEY_ENV_VAR: "secret"}, clear=False):
+            error = runtime_configuration_error() or ""
+        self.assertIn(SESSION_SECRET_ENV_VAR, error)
+
+        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1", API_KEY_ENV_VAR: "secret", SESSION_SECRET_ENV_VAR: "session-secret"}, clear=False):
+            error = runtime_configuration_error() or ""
+        self.assertIn(ALLOWED_ORIGINS_ENV_VAR, error)
+
 
 class FrontendContractTests(unittest.TestCase):
     def test_pressure_slider_enforces_supported_minimum(self) -> None:
         self.assertIn(f'id="pressure" type="range" min="{MIN_PRESSURE_ATM}" max="1.2"', HTML_PAGE)
         self.assertIn("const MIN_PRESSURE = 0.001;", HTML_PAGE)
         self.assertIn("function clampPressure(pressureAtm)", HTML_PAGE)
+        self.assertIn("Number(v) < 0.01 ? Number(v).toFixed(3) : Number(v).toFixed(2)", HTML_PAGE)
 
     def test_material_density_control_can_expand_for_dense_historic_presets(self) -> None:
         self.assertIn("function syncMaterialDensityLimit(materialDensity)", HTML_PAGE)
         self.assertIn("Math.max(defaultMaterialDensityMax, roundedMax)", HTML_PAGE)
 
     def test_plot_bounds_keep_at_least_the_requested_axes_but_do_not_clip_presets_by_default(self) -> None:
-        self.assertIn("FIXED_PLOT_BOUNDS.maxX = Math.max(2400, FIXED_PLOT_BOUNDS.maxX);", HTML_PAGE)
-        self.assertIn("FIXED_PLOT_BOUNDS.maxY = Math.max(850, FIXED_PLOT_BOUNDS.maxY);", HTML_PAGE)
+        self.assertIn("return state.stableBounds || state.focusedBounds || { maxX: 2400, maxY: 850 };", HTML_PAGE)
 
     def test_historic_guns_use_stable_per_gun_plot_bounds(self) -> None:
-        self.assertIn("const HISTORICAL_GUN_PLOT_BOUNDS = Object.fromEntries(", HTML_PAGE)
         self.assertIn("function activePlotBounds()", HTML_PAGE)
-        self.assertIn("function computeFocusedPlotBounds(params)", HTML_PAGE)
-        self.assertIn("return state.currentGun ? HISTORICAL_GUN_PLOT_BOUNDS[state.currentGun] : FIXED_PLOT_BOUNDS;", HTML_PAGE)
+        self.assertIn('body: JSON.stringify({ ...state.params, currentGun: state.currentGun })', HTML_PAGE)
 
     def test_selected_gun_can_be_customized_without_leaving_gun_context(self) -> None:
         self.assertIn("presetModified: false", HTML_PAGE)
@@ -228,9 +445,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('historicalGuns[state.currentGun].name}${state.presetModified ? " custom" : ""}', HTML_PAGE)
 
     def test_resize_redraws_without_rerunning_physics(self) -> None:
-        self.assertIn("function recalculatePhysics()", HTML_PAGE)
+        self.assertIn("async function recalculatePhysics()", HTML_PAGE)
         self.assertIn("function redrawDisplay()", HTML_PAGE)
-        self.assertIn('window.addEventListener("resize", redrawDisplay);', HTML_PAGE)
+        self.assertIn('window.addEventListener("resize", () => {', HTML_PAGE)
 
     def test_launch_controls_expose_projectile_shape_toggle(self) -> None:
         self.assertIn('id="shapeSphereBtn"', HTML_PAGE)
@@ -246,11 +463,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('state.drag.aero.impactReynolds.toFixed(0)', HTML_PAGE)
         self.assertNotIn('id="hero-ideal-speed"', HTML_PAGE)
 
-    def test_frontend_includes_mach_aware_drag_helpers(self) -> None:
-        self.assertIn("const AIR_HEAT_CAPACITY_RATIO = 1.4;", HTML_PAGE)
-        self.assertIn("function speedOfSound(temperatureC)", HTML_PAGE)
-        self.assertIn("function machNumber(speed, temperatureC)", HTML_PAGE)
-        self.assertIn("function compressibilityDragMultiplier(mach)", HTML_PAGE)
+    def test_frontend_uses_python_simulation_endpoint(self) -> None:
+        self.assertIn('fetch("/api/simulate"', HTML_PAGE)
+        self.assertIn('"X-CSRF-Token": state.csrfToken', HTML_PAGE)
+        self.assertIn('fetch("/session/bootstrap"', HTML_PAGE)
+        self.assertIn("const BOOTSTRAP_CHALLENGE = __BOOTSTRAP_CHALLENGE__;", HTML_PAGE)
+        self.assertNotIn("function simulateDrag(params)", HTML_PAGE)
+        self.assertNotIn("function simulateIdeal(params)", HTML_PAGE)
 
     def test_historic_library_includes_siege_engines(self) -> None:
         self.assertIn("Counterweight trebuchet", HTML_PAGE)

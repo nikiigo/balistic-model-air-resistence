@@ -2,6 +2,8 @@
 
 Interactive web-based projectile simulator for physics education. The app compares ideal projectile motion with a drag model whose aerodynamic parameters are derived dynamically from atmospheric conditions and projectile geometry.
 
+The browser UI renders trajectories computed by the Python server, so the simulation logic now lives in one place rather than being duplicated in both Python and JavaScript.
+
 ![Trajectory comparison](assets/screenshots/interactive-ballistics-simulator.png)
 
 ## Live Demo
@@ -119,6 +121,14 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 
 ## Run Locally
 
+Install dependencies:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+```
+
 Start the local web server:
 
 ```bash
@@ -136,6 +146,127 @@ You can also bind a different interface or port:
 ```bash
 python3 main.py --host 127.0.0.1 --port 8888
 ```
+
+This server is intended for local use. It has basic request validation, but it is not designed as an internet-facing service with authentication, rate limiting, or production hardening.
+For browser-testing the deployment path locally, you can also run:
+
+```bash
+.venv/bin/gunicorn --bind 127.0.0.1:8000 main:application
+```
+
+For deployment behind Caddy or another reverse proxy, run the WSGI app with a production server such as Gunicorn:
+
+```bash
+.venv/bin/gunicorn main:application
+```
+
+Install Gunicorn into the project virtualenv:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Example production-style Gunicorn command bound to localhost:
+
+```bash
+BALLISTICS_PUBLIC_MODE=1 \
+BALLISTICS_API_KEY=change-me \
+BALLISTICS_SESSION_SECRET=change-this-too \
+BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example \
+.venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 30 main:application
+```
+
+To run it as a systemd service, create `/etc/systemd/system/ballistics.service`:
+
+```ini
+[Unit]
+Description=Interactive Ballistics Simulator
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/absolute/path/to/balistic-model-air-resistence
+Environment=BALLISTICS_PUBLIC_MODE=1
+Environment=BALLISTICS_API_KEY=change-me
+Environment=BALLISTICS_SESSION_SECRET=change-this-too
+Environment=BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example
+ExecStart=/absolute/path/to/balistic-model-air-resistence/.venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 30 main:application
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ballistics.service
+sudo systemctl status ballistics.service
+```
+
+To update environment variables later, edit the unit file and reload it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ballistics.service
+```
+
+Example Caddy site block:
+
+```caddy
+your-domain.example {
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+
+	log {
+		output file /var/log/caddy/ballistics-access.log
+		format console
+	}
+
+	reverse_proxy 127.0.0.1:8000
+}
+```
+
+Deployment notes:
+
+- keep Gunicorn bound to `127.0.0.1:8000`
+- expose only Caddy publicly
+- set `BALLISTICS_ALLOWED_ORIGINS` to your exact HTTPS origin
+- keep the browser on the session-cookie + CSRF path; do not blindly inject `X-API-Key` on the public browser route unless you explicitly want every public request proxied upstream as trusted
+- keep TLS termination in Caddy; if you want rate limiting, add it with the mechanism you already use in your Caddy deployment
+
+Optional hardening environment variables:
+
+- `BALLISTICS_PUBLIC_MODE`: set to `1` to enable internet-facing safety checks; in this mode the app refuses to serve unless `BALLISTICS_API_KEY`, `BALLISTICS_SESSION_SECRET`, and `BALLISTICS_ALLOWED_ORIGINS` are configured
+- `BALLISTICS_API_KEY`: if set, `/api/simulate` requires the `X-API-Key` header to match this value
+- `BALLISTICS_SESSION_SECRET`: HMAC secret used to issue browser session cookies and CSRF tokens
+- `BALLISTICS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call `/api/simulate` when an `Origin` header is present
+
+Example:
+
+```bash
+BALLISTICS_PUBLIC_MODE=1 \
+BALLISTICS_API_KEY=change-me \
+BALLISTICS_SESSION_SECRET=change-this-too \
+BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example \
+.venv/bin/gunicorn main:application
+```
+
+Browser requests now use a server-issued session cookie plus a CSRF token injected into the HTML page. The browser challenge/bootstrap step creates that session after a correct answer.
+
+On a new browser visit, the page first presents a lightweight physics challenge. A correct answer upgrades the browser into a real simulation session and enables `/api/simulate`.
+
+This is basic application-layer hardening, not full production security by itself. If the service is internet-facing, TLS, request throttling, and network exposure controls should still be enforced by the reverse proxy and host environment.
 
 ## Validation
 
@@ -158,7 +289,9 @@ Useful manual checks:
 
 ## Project Structure
 
-- [main.py](main.py): HTTP server, HTML, CSS, JavaScript, and Python physics helpers
+- [main.py](main.py): WSGI application, local dev server entrypoint, HTML, CSS, JavaScript, and Python physics helpers
+- [requirements.txt](requirements.txt): runtime Python dependency pins
+- browser rendering calls the local `/api/simulate` endpoint for ideal and drag trajectories
 - [test_main.py](test_main.py): analytical and aerodynamic regression tests
 - [assets/guns](assets/guns): bundled historical launcher images used by the local library
 - [assets/screenshots](assets/screenshots): README screenshot assets
