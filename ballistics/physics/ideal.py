@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import math
-from typing import Dict
+from typing import Dict, TypedDict
 
 from ballistics.constants import G
+
+
+class IdealSimulationParams(TypedDict):
+    angle: float
+    speed: float
+    dt: float
 
 
 def analytical_metrics(speed: float, angle_deg: float, gravity: float = G) -> Dict[str, float]:
@@ -20,7 +26,7 @@ def analytical_metrics(speed: float, angle_deg: float, gravity: float = G) -> Di
     }
 
 
-def simulate_ideal_reference(params: Dict[str, float]) -> Dict[str, object]:
+def simulate_ideal_reference(params: IdealSimulationParams) -> Dict[str, object]:
     metrics = analytical_metrics(params["speed"], params["angle"])
     theta = math.radians(params["angle"])
     vx = params["speed"] * math.cos(theta)

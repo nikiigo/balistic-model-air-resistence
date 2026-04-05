@@ -1,6 +1,5 @@
 import math
 import unittest
-from typing import cast
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -26,6 +25,15 @@ from ballistics.physics.drag import (
     sphere_area_from_diameter,
 )
 from ballistics.physics.ideal import analytical_metrics, simulate_ideal_reference
+from ballistics.schemas import SimulationParams
+
+
+def expected_haider_levenspiel_drag(reynolds: float, phi: float = 1.0) -> float:
+    a = math.exp(2.3288 - 6.4581 * phi + 2.4486 * phi**2)
+    b = 0.0964 + 0.5565 * phi
+    c = math.exp(4.9050 - 13.8944 * phi + 18.4222 * phi**2 - 10.2599 * phi**3)
+    d = math.exp(1.4681 + 12.2584 * phi - 20.7322 * phi**2 + 15.8855 * phi**3)
+    return (24.0 / reynolds) * (1.0 + a * (reynolds**b)) + ((c * reynolds) / (d + reynolds))
 
 
 class AnalyticalMetricsTests(unittest.TestCase):
@@ -91,30 +99,14 @@ class AerodynamicHelpersTests(unittest.TestCase):
 
     def test_drag_coefficient_piecewise_regimes(self) -> None:
         reynolds = 100.0
-        phi = 1.0
-        a = math.exp(2.3288 - 6.4581 * phi + 2.4486 * phi**2)
-        b = 0.0964 + 0.5565 * phi
-        c = math.exp(4.9050 - 13.8944 * phi + 18.4222 * phi**2 - 10.2599 * phi**3)
-        d = math.exp(1.4681 + 12.2584 * phi - 20.7322 * phi**2 + 15.8855 * phi**3)
-        expected = (
-            (24.0 / reynolds) * (1.0 + a * (reynolds**b))
-            + ((c * reynolds) / (d + reynolds))
-        )
+        expected = expected_haider_levenspiel_drag(reynolds)
         self.assertAlmostEqual(drag_coefficient_sphere(reynolds), expected, places=9)
         self.assertGreater(drag_coefficient_sphere(0.05), 100.0)
         self.assertGreater(drag_coefficient_sphere(5000.0), 0.1)
 
     def test_sphere_drag_uses_haider_levenspiel_sphere_limit(self) -> None:
         reynolds = 1_000_000.0
-        phi = 1.0
-        a = math.exp(2.3288 - 6.4581 * phi + 2.4486 * phi**2)
-        b = 0.0964 + 0.5565 * phi
-        c = math.exp(4.9050 - 13.8944 * phi + 18.4222 * phi**2 - 10.2599 * phi**3)
-        d = math.exp(1.4681 + 12.2584 * phi - 20.7322 * phi**2 + 15.8855 * phi**3)
-        expected = (
-            (24.0 / reynolds) * (1.0 + a * (reynolds**b))
-            + ((c * reynolds) / (d + reynolds))
-        )
+        expected = expected_haider_levenspiel_drag(reynolds)
         self.assertAlmostEqual(drag_coefficient_sphere(reynolds), expected, places=9)
         self.assertGreater(drag_coefficient_sphere(1_000_001.0), 0.4)
 
@@ -153,7 +145,7 @@ class AerodynamicHelpersTests(unittest.TestCase):
 
 class DragSimulationRegressionTests(unittest.TestCase):
     @staticmethod
-    def base_params() -> dict[str, float]:
+    def base_params() -> SimulationParams:
         return {
             "angle": 35.0,
             "speed": 120.0,
@@ -162,11 +154,16 @@ class DragSimulationRegressionTests(unittest.TestCase):
             "pressure": 1.0,
             "diameter": 0.1,
             "dt": 0.01,
+            "projectileShape": "sphere",
+            "sphericity": 1.0,
+            "volumeFactor": 1.0,
+            "dragModel": "g7",
+            "ballisticCoefficient": 0.0,
         }
 
     def test_pressure_below_supported_floor_clamps_to_minimum(self) -> None:
-        clamped = simulate_drag_reference(cast(dict[str, float], {**self.base_params(), "pressure": 0.0}))
-        minimum = simulate_drag_reference(cast(dict[str, float], {**self.base_params(), "pressure": MIN_PRESSURE_ATM}))
+        clamped = simulate_drag_reference({**self.base_params(), "pressure": 0.0})
+        minimum = simulate_drag_reference({**self.base_params(), "pressure": MIN_PRESSURE_ATM})
         self.assertAlmostEqual(clamped["metrics"]["range"], minimum["metrics"]["range"], places=9)
         self.assertAlmostEqual(clamped["aero"]["launch_drag_force"], minimum["aero"]["launch_drag_force"], places=9)
 
@@ -278,7 +275,7 @@ class DragSimulationRegressionTests(unittest.TestCase):
 
     def test_ideal_reference_matches_closed_form_metrics(self) -> None:
         params = self.base_params()
-        ideal = simulate_ideal_reference(params)
+        ideal = simulate_ideal_reference({"angle": params["angle"], "speed": params["speed"], "dt": params["dt"]})
         analytical = analytical_metrics(params["speed"], params["angle"])
 
         self.assertAlmostEqual(ideal["metrics"]["range"], analytical["range"], places=9)
@@ -286,7 +283,7 @@ class DragSimulationRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(ideal["metrics"]["flightTime"], analytical["flight_time"], places=9)
 
     def test_streamlined_shell_range_is_not_crushed_by_particle_drag_correlation(self) -> None:
-        params = {
+        params: SimulationParams = {
             "angle": 10.0,
             "speed": 370.0,
             "materialDensity": material_density_from_mass_and_diameter(4.3, 0.076, 2.4),
@@ -306,7 +303,7 @@ class DragSimulationRegressionTests(unittest.TestCase):
         self.assertGreater(drag["metrics"]["range"] / ideal["metrics"]["range"], 0.3)
 
     def test_higher_shell_ballistic_coefficient_reduces_drag_and_extends_range(self) -> None:
-        params = {
+        params: SimulationParams = {
             "angle": 10.0,
             "speed": 370.0,
             "materialDensity": material_density_from_mass_and_diameter(4.3, 0.076, 2.4),

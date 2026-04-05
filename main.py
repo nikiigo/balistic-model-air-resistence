@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# noinspection HttpUrlsUsage
 def main() -> None:
     args = parse_args()
     with make_server(args.host, args.port, application) as server:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, cast, TypedDict
+from typing import Any, TypedDict
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -97,6 +97,13 @@ class AeroState(TypedDict):
     ballistic_coefficient: float
 
 
+class ProjectileDescriptor(TypedDict):
+    projectile_shape: str
+    sphericity: float
+    drag_model: str
+    ballistic_coefficient: float
+
+
 class AccelerationState(TypedDict):
     ax: float
     ay: float
@@ -124,12 +131,8 @@ class DragMetrics(TypedDict):
     peak: PeakPoint
 
 
-class DragSummary(TypedDict):
+class DragSummary(ProjectileDescriptor):
     projectile_mass: float
-    projectile_shape: str
-    sphericity: float
-    drag_model: str
-    ballistic_coefficient: float
     air_density: float
     viscosity: float
     area: float
@@ -259,6 +262,54 @@ def compressibility_drag_multiplier(mach: float) -> float:
     return 1.0 + ((mach * mach) / 4.0) + ((mach**4) / 40.0)
 
 
+def _with_aero_updates(
+    base_state: AeroState,
+    *,
+    base_drag_coefficient: float,
+    drag_coefficient: float,
+    drag_force: float,
+    ballistic_coefficient: float,
+) -> AeroState:
+    return {
+        "air_density": base_state["air_density"],
+        "viscosity": base_state["viscosity"],
+        "speed_of_sound": base_state["speed_of_sound"],
+        "area": base_state["area"],
+        "reynolds": base_state["reynolds"],
+        "mach": base_state["mach"],
+        "base_drag_coefficient": base_drag_coefficient,
+        "drag_coefficient": drag_coefficient,
+        "drag_force": drag_force,
+        "projectile_shape": base_state["projectile_shape"],
+        "sphericity": base_state["sphericity"],
+        "drag_model": base_state["drag_model"],
+        "ballistic_coefficient": ballistic_coefficient,
+    }
+
+
+def _trajectory_point(x: float, y: float, t: float, vx: float, vy: float, aero: AeroState) -> TrajectoryPoint:
+    return {
+        "x": x,
+        "y": y,
+        "t": t,
+        "vx": vx,
+        "vy": vy,
+        "air_density": aero["air_density"],
+        "viscosity": aero["viscosity"],
+        "speed_of_sound": aero["speed_of_sound"],
+        "area": aero["area"],
+        "reynolds": aero["reynolds"],
+        "mach": aero["mach"],
+        "base_drag_coefficient": aero["base_drag_coefficient"],
+        "drag_coefficient": aero["drag_coefficient"],
+        "drag_force": aero["drag_force"],
+        "projectile_shape": aero["projectile_shape"],
+        "sphericity": aero["sphericity"],
+        "drag_model": aero["drag_model"],
+        "ballistic_coefficient": aero["ballistic_coefficient"],
+    }
+
+
 def _shared_aerodynamic_state(
     speed: float,
     temperature_c: float,
@@ -269,6 +320,7 @@ def _shared_aerodynamic_state(
     drag_model: str,
     ballistic_coefficient: float,
 ) -> AeroState:
+    # noinspection SpellCheckingInspection
     density = air_density_from_conditions(temperature_c, pressure_atm)
     viscosity = dynamic_viscosity_air(temperature_c)
     sound_speed = speed_of_sound_air(temperature_c)
@@ -297,12 +349,13 @@ def _sphere_aerodynamic_state(base_state: AeroState, speed: float) -> AeroState:
     base_drag_coefficient = drag_coefficient_sphere(base_state["reynolds"])
     drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(base_state["mach"])
     drag_force = 0.5 * base_state["air_density"] * drag_coefficient * base_state["area"] * speed * speed
-    result = dict(base_state)
-    result["base_drag_coefficient"] = base_drag_coefficient
-    result["drag_coefficient"] = drag_coefficient
-    result["drag_force"] = drag_force
-    result["ballistic_coefficient"] = 0.0
-    return cast(AeroState, result)
+    return _with_aero_updates(
+        base_state,
+        base_drag_coefficient=base_drag_coefficient,
+        drag_coefficient=drag_coefficient,
+        drag_force=drag_force,
+        ballistic_coefficient=0.0,
+    )
 
 
 def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mass: float) -> AeroState:
@@ -324,12 +377,13 @@ def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mas
         )
     else:
         drag_coefficient = 0.0
-    result = dict(base_state)
-    result["base_drag_coefficient"] = drag_coefficient
-    result["drag_coefficient"] = drag_coefficient
-    result["drag_force"] = drag_force
-    result["ballistic_coefficient"] = effective_ballistic_coefficient
-    return cast(AeroState, result)
+    return _with_aero_updates(
+        base_state,
+        base_drag_coefficient=drag_coefficient,
+        drag_coefficient=drag_coefficient,
+        drag_force=drag_force,
+        ballistic_coefficient=effective_ballistic_coefficient,
+    )
 
 
 def aerodynamic_state(
@@ -399,6 +453,7 @@ def _build_drag_summary(
     launch_aero: AeroState,
     impact_aero: AeroState,
 ) -> DragSummary:
+    # noinspection SpellCheckingInspection
     return {
         "projectile_mass": projectile_mass,
         "projectile_shape": projectile_shape,
@@ -441,7 +496,7 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
         drag_model=drag_model,
         ballistic_coefficient=ballistic_coefficient,
     )
-    initial_point = cast(TrajectoryPoint, {"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero})
+    initial_point = _trajectory_point(x, y, 0.0, vx, vy, aero)
     points: list[TrajectoryPoint] = [initial_point]
     t = 0.0
     max_height = 0.0
@@ -518,7 +573,7 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
             max_height = y
             peak = {"x": x, "y": y}
 
-        if y <= 0.0 and t > 0.0:
+        if t > 0.0 and y <= 0.0:
             prev = points[-1]
             ratio = prev["y"] / (prev["y"] - y) if prev["y"] != y else 1.0
             impact_x = prev["x"] + (x - prev["x"]) * ratio
@@ -536,10 +591,7 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
                 drag_model=drag_model,
                 ballistic_coefficient=ballistic_coefficient,
             )
-            impact_point = cast(
-                TrajectoryPoint,
-                {"x": impact_x, "y": 0.0, "t": impact_t, "vx": impact_vx, "vy": impact_vy, **impact_aero},
-            )
+            impact_point = _trajectory_point(impact_x, 0.0, impact_t, impact_vx, impact_vy, impact_aero)
             points.append(impact_point)
             return {
                 "points": points,
@@ -561,7 +613,7 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
                 ),
             }
 
-        next_point = cast(TrajectoryPoint, {"x": x, "y": y, "t": t, "vx": vx, "vy": vy, **aero})
+        next_point = _trajectory_point(x, y, t, vx, vy, aero)
         points.append(next_point)
 
     return {

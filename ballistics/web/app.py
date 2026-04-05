@@ -107,8 +107,8 @@ def create_application(html_page: str):
             extra_headers = None
             if session_id is None:
                 if bootstrap_challenge_enabled():
-                    bootstrap_challenge = BootstrapChallenge(generate_bootstrap_challenge())
-                    bootstrap_challenge["required"] = True
+                    challenge_payload = generate_bootstrap_challenge()
+                    bootstrap_challenge = {**challenge_payload, "required": True}
                 else:
                     session_id = new_session_id()
                     extra_headers = [session_cookie_header(session_id)]

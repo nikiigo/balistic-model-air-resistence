@@ -3,7 +3,6 @@ import re
 import unittest
 from io import BytesIO
 from pathlib import Path
-from typing import Any, cast
 from unittest.mock import patch
 
 from ballistics.config import runtime_configuration_error
@@ -107,12 +106,20 @@ class SimulationApiTests(unittest.TestCase):
 
 class ServerHardeningTests(unittest.TestCase):
     @staticmethod
-    def wsgi_request(*, path: str = "/api/simulate", method: str = "POST", body: bytes = b"{}", extra_environ: dict[str, str | BytesIO] | None = None):
-        captured: dict[str, object] = {}
+    def wsgi_request(
+        *,
+        path: str = "/api/simulate",
+        method: str = "POST",
+        body: bytes = b"{}",
+        extra_environ: dict[str, str | BytesIO] | None = None,
+    ) -> tuple[str, dict[str, str], bytes]:
+        captured_status = ""
+        captured_headers: dict[str, str] = {}
 
         def start_response(status, headers):
-            captured["status"] = status
-            captured["headers"] = dict(headers)
+            nonlocal captured_status, captured_headers
+            captured_status = status
+            captured_headers = dict(headers)
 
         environ: dict[str, str | BytesIO] = {
             "REQUEST_METHOD": method,
@@ -123,7 +130,7 @@ class ServerHardeningTests(unittest.TestCase):
         if extra_environ:
             environ.update(extra_environ)
         response_body = b"".join(application(environ, start_response))
-        return captured["status"], captured["headers"], response_body
+        return captured_status, captured_headers, response_body
 
     def bootstrap_browser_session(self) -> tuple[str, str]:
         status, _, body = self.wsgi_request(path="/", method="GET", body=b"")
@@ -132,7 +139,9 @@ class ServerHardeningTests(unittest.TestCase):
         match = re.search(r"const BOOTSTRAP_CHALLENGE = (\{.*?\});", rendered)
         self.assertIsNotNone(match)
         assert match is not None
-        challenge = cast(dict[str, Any], json.loads(match.group(1)))
+        challenge_data = json.loads(match.group(1))
+        self.assertIsInstance(challenge_data, dict)
+        challenge = challenge_data
         token_payload = verify_signed_payload(str(challenge["token"]))
         self.assertIsNotNone(token_payload)
         assert token_payload is not None
@@ -148,7 +157,9 @@ class ServerHardeningTests(unittest.TestCase):
             body=json.dumps({"token": challenge["token"], "answer": answer}).encode("utf-8"),
         )
         self.assertEqual(status, "200 OK")
-        payload = cast(dict[str, Any], json.loads(body.decode("utf-8")))
+        payload_data = json.loads(body.decode("utf-8"))
+        self.assertIsInstance(payload_data, dict)
+        payload = payload_data
         session_match = re.search(rf"{SESSION_COOKIE_NAME}=([^;]+)", headers["Set-Cookie"])
         self.assertIsNotNone(session_match)
         assert session_match is not None
