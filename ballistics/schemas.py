@@ -4,7 +4,10 @@ import math
 from typing import Dict
 
 from ballistics.constants import (
+    DEFAULT_SHELL_BALLISTIC_COEFFICIENT,
+    DEFAULT_SHELL_DRAG_MODEL,
     MAX_ANGLE_DEG,
+    MAX_BALLISTIC_COEFFICIENT,
     MAX_DIAMETER_M,
     MAX_DT,
     MAX_MATERIAL_DENSITY,
@@ -14,6 +17,7 @@ from ballistics.constants import (
     MAX_TEMPERATURE_C,
     MAX_VOLUME_FACTOR,
     MIN_ANGLE_DEG,
+    MIN_BALLISTIC_COEFFICIENT,
     MIN_DIAMETER_M,
     MIN_DT,
     MIN_MATERIAL_DENSITY,
@@ -101,6 +105,8 @@ def serialize_drag_result(result: Dict[str, object]) -> Dict[str, object]:
             "projectileMass": aero["projectile_mass"],
             "projectileShape": aero["projectile_shape"],
             "sphericity": aero["sphericity"],
+            "dragModel": aero["drag_model"],
+            "ballisticCoefficient": aero["ballistic_coefficient"],
             "airDensity": aero["air_density"],
             "viscosity": aero["viscosity"],
             "area": aero["area"],
@@ -150,7 +156,18 @@ for _gun_key, _gun_params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
 
 def normalize_simulation_params(payload: Dict[str, object]) -> Dict[str, float | str]:
     params: Dict[str, float | str] = {**DEFAULT_SIMULATION_PARAMS}
-    numeric_fields = ("angle", "speed", "materialDensity", "temperature", "pressure", "diameter", "dt", "sphericity", "volumeFactor")
+    numeric_fields = (
+        "angle",
+        "speed",
+        "materialDensity",
+        "temperature",
+        "pressure",
+        "diameter",
+        "dt",
+        "sphericity",
+        "volumeFactor",
+        "ballisticCoefficient",
+    )
     for field in numeric_fields:
         if field in payload:
             candidate = float(payload[field])
@@ -160,6 +177,8 @@ def normalize_simulation_params(payload: Dict[str, object]) -> Dict[str, float |
 
     projectile_shape = str(payload.get("projectileShape", params["projectileShape"]))
     params["projectileShape"] = "shell" if projectile_shape == "shell" else "sphere"
+    drag_model = str(payload.get("dragModel", params.get("dragModel", DEFAULT_SHELL_DRAG_MODEL))).lower()
+    params["dragModel"] = "g1" if drag_model == "g1" else DEFAULT_SHELL_DRAG_MODEL
     params["angle"] = clamp(float(params["angle"]), MIN_ANGLE_DEG, MAX_ANGLE_DEG)
     params["speed"] = clamp(float(params["speed"]), MIN_SPEED, MAX_SPEED)
     params["materialDensity"] = clamp(float(params["materialDensity"]), MIN_MATERIAL_DENSITY, MAX_MATERIAL_DENSITY)
@@ -170,9 +189,17 @@ def normalize_simulation_params(payload: Dict[str, object]) -> Dict[str, float |
     if params["projectileShape"] != "shell":
         params["sphericity"] = 1.0
         params["volumeFactor"] = 1.0
+        params["ballisticCoefficient"] = 0.0
     else:
         params["sphericity"] = clamp(float(params["sphericity"]), MIN_SPHERICITY, MAX_SPHERICITY)
         params["volumeFactor"] = clamp(float(params["volumeFactor"]), MIN_VOLUME_FACTOR, MAX_VOLUME_FACTOR)
+        if "ballisticCoefficient" not in payload:
+            params["ballisticCoefficient"] = DEFAULT_SHELL_BALLISTIC_COEFFICIENT
+        params["ballisticCoefficient"] = clamp(
+            float(params.get("ballisticCoefficient", DEFAULT_SHELL_BALLISTIC_COEFFICIENT)),
+            MIN_BALLISTIC_COEFFICIENT,
+            MAX_BALLISTIC_COEFFICIENT,
+        )
     return params
 
 

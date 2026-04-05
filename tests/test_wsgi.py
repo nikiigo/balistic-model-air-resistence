@@ -8,6 +8,7 @@ from unittest.mock import patch
 from main import (
     ALLOWED_ORIGINS_ENV_VAR,
     API_KEY_ENV_VAR,
+    DEFAULT_SHELL_BALLISTIC_COEFFICIENT,
     ENABLE_CHALLENGE_ENV_VAR,
     FIXED_PLOT_BOUNDS,
     G,
@@ -20,6 +21,7 @@ from main import (
     MIN_PRESSURE_ATM,
     MIN_SPHERICITY,
     MIN_VOLUME_FACTOR,
+    MIN_BALLISTIC_COEFFICIENT,
     PUBLIC_MODE_ENV_VAR,
     SESSION_COOKIE_NAME,
     SESSION_SECRET_ENV_VAR,
@@ -44,6 +46,8 @@ class SimulationApiTests(unittest.TestCase):
             "projectileShape": "shell",
             "sphericity": 0,
             "volumeFactor": -1,
+            "ballisticCoefficient": 0,
+            "dragModel": "g1",
         })
 
         self.assertEqual(params["speed"], MAX_SPEED)
@@ -52,6 +56,22 @@ class SimulationApiTests(unittest.TestCase):
         self.assertEqual(params["materialDensity"], MIN_MATERIAL_DENSITY)
         self.assertEqual(params["sphericity"], MIN_SPHERICITY)
         self.assertEqual(params["volumeFactor"], MIN_VOLUME_FACTOR)
+        self.assertEqual(params["ballisticCoefficient"], MIN_BALLISTIC_COEFFICIENT)
+        self.assertEqual(params["dragModel"], "g1")
+
+    def test_non_shell_input_resets_ballistic_coefficient_fields(self) -> None:
+        params = normalize_simulation_params({
+            "projectileShape": "sphere",
+            "ballisticCoefficient": 0.5,
+            "dragModel": "g1",
+        })
+        self.assertEqual(params["ballisticCoefficient"], 0.0)
+        self.assertEqual(params["dragModel"], "g1")
+
+    def test_shell_defaults_to_generic_g7_ballistic_coefficient(self) -> None:
+        params = normalize_simulation_params({"projectileShape": "shell"})
+        self.assertEqual(params["dragModel"], "g7")
+        self.assertEqual(params["ballisticCoefficient"], DEFAULT_SHELL_BALLISTIC_COEFFICIENT)
 
     def test_normalize_simulation_params_rejects_non_finite_values(self) -> None:
         with self.assertRaises(ValueError):

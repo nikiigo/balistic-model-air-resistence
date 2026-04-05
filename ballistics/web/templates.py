@@ -1018,7 +1018,9 @@ HTML_PAGE = """<!DOCTYPE html>
       dt: 0.016,
       projectileShape: "sphere",
       sphericity: 1,
-      volumeFactor: 1
+      volumeFactor: 1,
+      dragModel: "g7",
+      ballisticCoefficient: 0
     };
     const MIN_PRESSURE = 0.001;
 
@@ -1076,6 +1078,8 @@ HTML_PAGE = """<!DOCTYPE html>
     const defaultMaterialDensityMax = Number(controls.materialDensity.max);
     const CUSTOM_SHELL_SPHERICITY = 0.68;
     const CUSTOM_SHELL_VOLUME_FACTOR = 2.2;
+    const CUSTOM_SHELL_DRAG_MODEL = "g7";
+    const CUSTOM_SHELL_BALLISTIC_COEFFICIENT = 0.22;
     const historicalGuns = {
       ballista: {
         name: "Ballista",
@@ -1088,8 +1092,8 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "Modeled 70 m/s release",
         range: "Direct-fire anti-personnel / anti-material shot",
         service: "Ancient and medieval siege warfare",
-        note: "The ballista preset uses the simulator's elongated-projectile model to approximate a large bolt rather than a stone sphere. It remains a point-mass flight approximation after release.",
-        params: { angle: 35, speed: 70, materialDensity: materialDensityFromMassAndDiameter(0.85, 0.05, 4.6), temperature: 15, pressure: 1, diameter: 0.05, dt: 0.016, projectileShape: "shell", sphericity: 0.4, volumeFactor: 4.6 },
+        note: "The ballista preset uses the simulator's G7 ballistic-coefficient shell path to approximate a large bolt rather than a stone sphere. It remains a point-mass flight approximation after release.",
+        params: { angle: 35, speed: 70, materialDensity: materialDensityFromMassAndDiameter(0.85, 0.05, 4.6), temperature: 15, pressure: 1, diameter: 0.05, dt: 0.016, projectileShape: "shell", sphericity: 0.4, volumeFactor: 4.6, dragModel: "g7", ballisticCoefficient: 0.12 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Ballista" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Hecht_090710_Ballista.jpg" }
@@ -1268,8 +1272,8 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "400 m/s",
         range: "Shell-gun naval artillery",
         service: "Explosive-shell naval warfare",
-        note: "The Paixhans gun was designed for explosive shells fired on a flatter trajectory than older shell artillery. This preset uses the simulator's nonspherical shell drag model with an effective shell-density approximation.",
-        params: { angle: 5, speed: 400, materialDensity: materialDensityFromMassAndDiameter(30, 0.22, 1.35), temperature: 15, pressure: 1, diameter: 0.22, dt: 0.01, projectileShape: "shell", sphericity: 0.72, volumeFactor: 1.35 },
+        note: "The Paixhans gun was designed for explosive shells fired on a flatter trajectory than older shell artillery. This preset uses the simulator's G7 ballistic-coefficient shell model with an effective shell-density approximation.",
+        params: { angle: 5, speed: 400, materialDensity: materialDensityFromMassAndDiameter(30, 0.22, 1.35), temperature: 15, pressure: 1, diameter: 0.22, dt: 0.01, projectileShape: "shell", sphericity: 0.72, volumeFactor: 1.35, dragModel: "g7", ballisticCoefficient: 0.19 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Paixhans_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Canon-Obusier-80lbs-22cm-Paixhans-No.4621.jpg" }
@@ -1286,8 +1290,8 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "378 m/s",
         range: "3,109 m",
         service: "Second Opium War, New Zealand Wars",
-        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight with the simulator's nonspherical shell drag model.",
-        params: { angle: 8, speed: 378, materialDensity: materialDensityFromMassAndDiameter(5.1, 0.076, 2.85), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.64, volumeFactor: 2.85 },
+        note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight with the simulator's G7 ballistic-coefficient shell model.",
+        params: { angle: 8, speed: 378, materialDensity: materialDensityFromMassAndDiameter(5.1, 0.076, 2.85), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.64, volumeFactor: 2.85, dragModel: "g7", ballisticCoefficient: 0.24 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/RBL_12-pounder_8_cwt_Armstrong_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:AWM-Armstrong-gun-1.jpg" }
@@ -1304,8 +1308,8 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "370 m/s",
         range: "1,673 m at 5°",
         service: "American Civil War",
-        note: "This preset represents a rifled shell rather than a smooth round shot. It uses the simulator's nonspherical shell drag model with a simplified shell-form approximation.",
-        params: { angle: 10, speed: 370, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.076, 2.4), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.66, volumeFactor: 2.4 },
+        note: "This preset represents a rifled shell rather than a smooth round shot. It uses the simulator's G7 ballistic-coefficient shell model.",
+        params: { angle: 10, speed: 370, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.076, 2.4), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.66, volumeFactor: 2.4, dragModel: "g7", ballisticCoefficient: 0.22 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/3-inch_ordnance_rifle" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:CW_Arty_3in_Ordnance_front.jpg" }
@@ -1340,8 +1344,8 @@ HTML_PAGE = """<!DOCTYPE html>
         muzzleVelocity: "375 m/s",
         range: "1,692 m at 5°",
         service: "American Civil War field artillery",
-        note: "This preset follows the documented 2.9-inch Parrott rifle figures and uses the simulator's nonspherical shell drag model for its elongated projectile.",
-        params: { angle: 5, speed: 375, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.074, 2.6), temperature: 15, pressure: 1, diameter: 0.074, dt: 0.01, projectileShape: "shell", sphericity: 0.65, volumeFactor: 2.6 },
+        note: "This preset follows the documented 2.9-inch Parrott rifle figures and uses the simulator's G7 ballistic-coefficient shell model for its elongated projectile.",
+        params: { angle: 5, speed: 375, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.074, 2.6), temperature: 15, pressure: 1, diameter: 0.074, dt: 0.01, projectileShape: "shell", sphericity: 0.65, volumeFactor: 2.6, dragModel: "g7", ballisticCoefficient: 0.21 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/10-pounder_Parrott_rifle" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:10_Pounder_Parrott_Rifle,_Chickamauga_Battlefield_Visitors_Center.jpg" }
@@ -1412,9 +1416,13 @@ HTML_PAGE = """<!DOCTYPE html>
       if (shape === "shell") {
         state.params.sphericity = options.sphericity ?? state.params.sphericity ?? CUSTOM_SHELL_SPHERICITY;
         state.params.volumeFactor = options.volumeFactor ?? state.params.volumeFactor ?? CUSTOM_SHELL_VOLUME_FACTOR;
+        state.params.dragModel = options.dragModel ?? state.params.dragModel ?? CUSTOM_SHELL_DRAG_MODEL;
+        state.params.ballisticCoefficient = options.ballisticCoefficient ?? state.params.ballisticCoefficient ?? CUSTOM_SHELL_BALLISTIC_COEFFICIENT;
       } else {
         state.params.sphericity = 1;
         state.params.volumeFactor = 1;
+        state.params.dragModel = CUSTOM_SHELL_DRAG_MODEL;
+        state.params.ballisticCoefficient = 0;
       }
       updateShapeControls();
     }
@@ -1471,7 +1479,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function paramsMatch(left, right) {
-      const keys = ["angle", "speed", "materialDensity", "temperature", "pressure", "diameter", "dt", "projectileShape", "sphericity", "volumeFactor"];
+      const keys = ["angle", "speed", "materialDensity", "temperature", "pressure", "diameter", "dt", "projectileShape", "sphericity", "volumeFactor", "dragModel", "ballisticCoefficient"];
       return keys.every((key) => {
         if (typeof left[key] === "string" || typeof right[key] === "string") {
           return left[key] === right[key];
@@ -1539,11 +1547,12 @@ HTML_PAGE = """<!DOCTYPE html>
       gunHoverImage.style.objectPosition = gun.imagePosition || "center center";
       gunHoverImage.style.transform = `scale(${gun.imageScale || 1})`;
       const densityLabel = gun.params.projectileShape === "shell" ? "Effective projectile density" : "Material density";
-      const shapeLabel = gun.params.projectileShape === "shell" ? "Elongated shell" : "Round shot sphere";
+      const shapeLabel = gun.params.projectileShape === "shell" ? `${String((gun.params.dragModel || "g7")).toUpperCase()} BC shell` : "Round shot sphere";
       gunHoverSpecs.innerHTML = `
         <span><strong>Diameter:</strong> ${gun.diameterLabel}</span>
         <span><strong>Shape model:</strong> ${shapeLabel}</span>
         <span><strong>${densityLabel}:</strong> ${Math.round(gun.params.materialDensity)} kg/m³</span>
+        ${gun.params.projectileShape === "shell" ? `<span><strong>Ballistic coefficient:</strong> ${Number(gun.params.ballisticCoefficient || 0).toFixed(2)}</span>` : ""}
         <span><strong>Projectile:</strong> ${gun.projectile}</span>
         <span><strong>Muzzle velocity:</strong> ${gun.muzzleVelocity}</span>
         <span><strong>Service:</strong> ${gun.service}</span>
@@ -2046,7 +2055,9 @@ HTML_PAGE = """<!DOCTYPE html>
     shapeShellBtn.addEventListener("click", () => {
       setProjectileShape("shell", {
         sphericity: state.params.projectileShape === "shell" ? state.params.sphericity : CUSTOM_SHELL_SPHERICITY,
-        volumeFactor: state.params.projectileShape === "shell" ? state.params.volumeFactor : CUSTOM_SHELL_VOLUME_FACTOR
+        volumeFactor: state.params.projectileShape === "shell" ? state.params.volumeFactor : CUSTOM_SHELL_VOLUME_FACTOR,
+        dragModel: state.params.projectileShape === "shell" ? state.params.dragModel : CUSTOM_SHELL_DRAG_MODEL,
+        ballisticCoefficient: state.params.projectileShape === "shell" ? state.params.ballisticCoefficient : CUSTOM_SHELL_BALLISTIC_COEFFICIENT
       });
       recompute();
     });

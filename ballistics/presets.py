@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ballistics.constants import MIN_PRESSURE_ATM
+from ballistics.constants import DEFAULT_SHELL_DRAG_MODEL, MIN_PRESSURE_ATM
 from ballistics.physics.drag import material_density_from_mass_and_diameter
 
 DEFAULT_SIMULATION_PARAMS = {
@@ -14,6 +14,8 @@ DEFAULT_SIMULATION_PARAMS = {
     "projectileShape": "sphere",
     "sphericity": 1.0,
     "volumeFactor": 1.0,
+    "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+    "ballisticCoefficient": 0.0,
 }
 
 REFERENCE_PRESETS = {
@@ -79,6 +81,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "shell",
         "sphericity": 0.4,
         "volumeFactor": 4.6,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.12,
     },
     "mangonel": {
         "angle": 38.0,
@@ -199,6 +203,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "shell",
         "sphericity": 0.72,
         "volumeFactor": 1.35,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.19,
     },
     "armstrong": {
         "angle": 8.0,
@@ -211,6 +217,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "shell",
         "sphericity": 0.64,
         "volumeFactor": 2.85,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.24,
     },
     "ordnance": {
         "angle": 10.0,
@@ -223,6 +231,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "shell",
         "sphericity": 0.66,
         "volumeFactor": 2.4,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.22,
     },
     "napoleon": {
         "angle": 12.0,
@@ -247,6 +257,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "shell",
         "sphericity": 0.65,
         "volumeFactor": 2.6,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.21,
     },
     "longGun24": {
         "angle": 6.0,
