@@ -67,7 +67,7 @@ def session_cookie_header(session_id: str) -> tuple[str, str]:
     cookie[SESSION_COOKIE_NAME]["samesite"] = "Lax"
     if public_mode_enabled():
         cookie[SESSION_COOKIE_NAME]["secure"] = True
-    return ("Set-Cookie", cookie.output(header="").strip())
+    return "Set-Cookie", cookie.output(header="").strip()
 
 
 def sign_payload(payload: dict[str, Any]) -> str:
@@ -98,7 +98,8 @@ def browser_session_authorized(environ) -> bool:
     if not session_id:
         return False
     origin = environ.get("HTTP_ORIGIN", "")
-    if configured_allowed_origins() and origin not in configured_allowed_origins():
+    allowed_origins = configured_allowed_origins()
+    if allowed_origins and origin not in allowed_origins:
         return False
     provided_csrf = environ.get("HTTP_X_CSRF_TOKEN", "")
     if not provided_csrf:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, TypedDict
+from typing import Any, cast, TypedDict
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -297,13 +297,12 @@ def _sphere_aerodynamic_state(base_state: AeroState, speed: float) -> AeroState:
     base_drag_coefficient = drag_coefficient_sphere(base_state["reynolds"])
     drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(base_state["mach"])
     drag_force = 0.5 * base_state["air_density"] * drag_coefficient * base_state["area"] * speed * speed
-    return {
-        **base_state,
-        "base_drag_coefficient": base_drag_coefficient,
-        "drag_coefficient": drag_coefficient,
-        "drag_force": drag_force,
-        "ballistic_coefficient": 0.0,
-    }
+    result = dict(base_state)
+    result["base_drag_coefficient"] = base_drag_coefficient
+    result["drag_coefficient"] = drag_coefficient
+    result["drag_force"] = drag_force
+    result["ballistic_coefficient"] = 0.0
+    return cast(AeroState, result)
 
 
 def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mass: float) -> AeroState:
@@ -325,13 +324,12 @@ def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mas
         )
     else:
         drag_coefficient = 0.0
-    return {
-        **base_state,
-        "base_drag_coefficient": drag_coefficient,
-        "drag_coefficient": drag_coefficient,
-        "drag_force": drag_force,
-        "ballistic_coefficient": effective_ballistic_coefficient,
-    }
+    result = dict(base_state)
+    result["base_drag_coefficient"] = drag_coefficient
+    result["drag_coefficient"] = drag_coefficient
+    result["drag_force"] = drag_force
+    result["ballistic_coefficient"] = effective_ballistic_coefficient
+    return cast(AeroState, result)
 
 
 def aerodynamic_state(
@@ -443,7 +441,8 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
         drag_model=drag_model,
         ballistic_coefficient=ballistic_coefficient,
     )
-    points: list[TrajectoryPoint] = [{"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero}]
+    initial_point = cast(TrajectoryPoint, {"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero})
+    points: list[TrajectoryPoint] = [initial_point]
     t = 0.0
     max_height = 0.0
     peak: PeakPoint = {"x": 0.0, "y": 0.0}
@@ -537,7 +536,11 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
                 drag_model=drag_model,
                 ballistic_coefficient=ballistic_coefficient,
             )
-            points.append({"x": impact_x, "y": 0.0, "t": impact_t, "vx": impact_vx, "vy": impact_vy, **impact_aero})
+            impact_point = cast(
+                TrajectoryPoint,
+                {"x": impact_x, "y": 0.0, "t": impact_t, "vx": impact_vx, "vy": impact_vy, **impact_aero},
+            )
+            points.append(impact_point)
             return {
                 "points": points,
                 "metrics": {
@@ -558,7 +561,8 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
                 ),
             }
 
-        points.append({"x": x, "y": y, "t": t, "vx": vx, "vy": vy, **aero})
+        next_point = cast(TrajectoryPoint, {"x": x, "y": y, "t": t, "vx": vx, "vy": vy, **aero})
+        points.append(next_point)
 
     return {
         "points": points,

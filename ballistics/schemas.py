@@ -104,7 +104,7 @@ def _bounds_from_angles(params: SimulationParams, sampled_angles: list[float], x
     max_x = 1.0
     max_y = 1.0
     for angle in sampled_angles:
-        sample_params: SimulationParams = {**params, "angle": angle}
+        sample_params = SimulationParams({**params, "angle": angle})
         ideal = simulate_ideal_reference(sample_params)
         drag = simulate_drag_reference(sample_params)
         max_x = max(max_x, ideal["metrics"]["range"], drag["metrics"]["range"])
@@ -177,22 +177,25 @@ def serialize_drag_result(result: DragSimulationResult) -> SerializedDragResult:
 
 
 PLOT_REFERENCE_SCENARIOS: list[SimulationParams] = [
-    cast(SimulationParams, DEFAULT_SIMULATION_PARAMS),
-    *[cast(SimulationParams, value) for value in REFERENCE_PRESETS.values()],
-    *[cast(SimulationParams, value) for value in HISTORICAL_PLOT_REFERENCE_PARAMS.values()],
-    cast(SimulationParams, {**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM}),
-    cast(SimulationParams, {**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM}),
+    cast(SimulationParams, cast(object, DEFAULT_SIMULATION_PARAMS)),
+    *[cast(SimulationParams, cast(object, value)) for value in REFERENCE_PRESETS.values()],
+    *[cast(SimulationParams, cast(object, value)) for value in HISTORICAL_PLOT_REFERENCE_PARAMS.values()],
+    cast(SimulationParams, cast(object, {**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM})),
+    cast(SimulationParams, cast(object, {**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM})),
     cast(
         SimulationParams,
-        {
-            **DEFAULT_SIMULATION_PARAMS,
-            "angle": 45.0,
-            "speed": 440.0,
-            "materialDensity": 12000.0,
-            "temperature": -10.0,
-            "pressure": 1.2,
-            "diameter": 0.01,
-        },
+        cast(
+            object,
+            {
+                **DEFAULT_SIMULATION_PARAMS,
+                "angle": 45.0,
+                "speed": 440.0,
+                "materialDensity": 12000.0,
+                "temperature": -10.0,
+                "pressure": 1.2,
+                "diameter": 0.01,
+            },
+        ),
     ),
 ]
 
@@ -214,10 +217,10 @@ for _gun_key, _gun_params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
 
 
 def normalize_simulation_params(payload: dict[str, object]) -> SimulationParams:
-    raw_params = {**DEFAULT_SIMULATION_PARAMS}
+    raw_params = dict(DEFAULT_SIMULATION_PARAMS)
     for field in NUMERIC_PARAM_FIELDS:
         if field in payload:
-            candidate = float(payload[field])
+            candidate = float(cast(object, payload[field]))
             if not math.isfinite(candidate):
                 raise ValueError(f"{field} must be finite.")
             raw_params[field] = candidate

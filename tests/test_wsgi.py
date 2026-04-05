@@ -3,6 +3,7 @@ import re
 import unittest
 from io import BytesIO
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 
 from ballistics.config import runtime_configuration_error
@@ -106,14 +107,14 @@ class SimulationApiTests(unittest.TestCase):
 
 class ServerHardeningTests(unittest.TestCase):
     @staticmethod
-    def wsgi_request(*, path: str = "/api/simulate", method: str = "POST", body: bytes = b"{}", extra_environ: dict[str, object] | None = None):
+    def wsgi_request(*, path: str = "/api/simulate", method: str = "POST", body: bytes = b"{}", extra_environ: dict[str, str | BytesIO] | None = None):
         captured: dict[str, object] = {}
 
         def start_response(status, headers):
             captured["status"] = status
             captured["headers"] = dict(headers)
 
-        environ = {
+        environ: dict[str, str | BytesIO] = {
             "REQUEST_METHOD": method,
             "PATH_INFO": path,
             "CONTENT_LENGTH": str(len(body)),
@@ -131,8 +132,8 @@ class ServerHardeningTests(unittest.TestCase):
         match = re.search(r"const BOOTSTRAP_CHALLENGE = (\{.*?\});", rendered)
         self.assertIsNotNone(match)
         assert match is not None
-        challenge = json.loads(match.group(1))
-        token_payload = verify_signed_payload(challenge["token"])
+        challenge = cast(dict[str, Any], json.loads(match.group(1)))
+        token_payload = verify_signed_payload(str(challenge["token"]))
         self.assertIsNotNone(token_payload)
         assert token_payload is not None
         if token_payload["kind"] == "vacuum_max_range_angle":
@@ -147,12 +148,12 @@ class ServerHardeningTests(unittest.TestCase):
             body=json.dumps({"token": challenge["token"], "answer": answer}).encode("utf-8"),
         )
         self.assertEqual(status, "200 OK")
-        payload = json.loads(body.decode("utf-8"))
+        payload = cast(dict[str, Any], json.loads(body.decode("utf-8")))
         session_match = re.search(rf"{SESSION_COOKIE_NAME}=([^;]+)", headers["Set-Cookie"])
         self.assertIsNotNone(session_match)
         assert session_match is not None
         session_id = session_match.group(1)
-        return session_id, payload["csrfToken"]
+        return session_id, str(payload["csrfToken"])
 
     def test_asset_path_containment_uses_resolved_relative_check(self) -> None:
         self.assertIn("asset_path.is_relative_to(RESOLVED_ASSETS_DIR)", Path("ballistics/web/app.py").read_text())

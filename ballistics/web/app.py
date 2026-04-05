@@ -18,7 +18,7 @@ from ballistics.web.auth import (
     session_cookie_header,
     verify_signed_payload,
 )
-from ballistics.web.challenge import challenge_answer_is_correct, challenge_is_expired, generate_bootstrap_challenge
+from ballistics.web.challenge import BootstrapChallenge, challenge_answer_is_correct, challenge_is_expired, generate_bootstrap_challenge
 from ballistics.web.pages import render_index_page
 
 
@@ -103,11 +103,11 @@ def create_application(html_page: str):
 
         if path in {"/", "/index.html"} and method in {"GET", "HEAD"}:
             session_id = current_session_id(environ)
-            bootstrap_challenge = None
+            bootstrap_challenge: BootstrapChallenge | None = None
             extra_headers = None
             if session_id is None:
                 if bootstrap_challenge_enabled():
-                    bootstrap_challenge = generate_bootstrap_challenge()
+                    bootstrap_challenge = BootstrapChallenge(generate_bootstrap_challenge())
                     bootstrap_challenge["required"] = True
                 else:
                     session_id = new_session_id()

@@ -17,6 +17,10 @@ class ChallengePayload(TypedDict, total=False):
     token: str
 
 
+class BootstrapChallenge(ChallengePayload, total=False):
+    required: bool
+
+
 def generate_bootstrap_challenge() -> ChallengePayload:
     challenge_id = secrets.randbelow(3)
     if challenge_id == 0:
@@ -26,14 +30,14 @@ def generate_bootstrap_challenge() -> ChallengePayload:
         }
     elif challenge_id == 1:
         base_angle = 20 + (5 * secrets.randbelow(6))
-        challenge = {
+        challenge: ChallengePayload = {
             "kind": "complementary_angle",
             "prompt": f"In vacuum, what complementary launch angle has the same range as {base_angle} degrees?",
             "baseAngle": base_angle,
         }
     else:
         speed = 10 + (5 * secrets.randbelow(5))
-        challenge = {
+        challenge: ChallengePayload = {
             "kind": "vertical_flight_time",
             "prompt": f"Ignoring drag, if a projectile is launched straight up at {speed} m/s, what is the total flight time in seconds? Round to one decimal place.",
             "speed": speed,
