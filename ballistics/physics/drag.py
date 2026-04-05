@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict
+from typing import TypedDict
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -75,6 +75,33 @@ G7_DRAG_TABLE = (
     (0.0, 1.34504843776525e-05, 2.08702306738884),
 )
 
+HL_SPHERE_A = math.exp(2.3288 - 6.4581 + 2.4486)
+HL_SPHERE_B = 0.0964 + 0.5565
+HL_SPHERE_C = math.exp(4.9050 - 13.8944 + 18.4222 - 10.2599)
+HL_SPHERE_D = math.exp(1.4681 + 12.2584 - 20.7322 + 15.8855)
+
+
+class AeroState(TypedDict):
+    air_density: float
+    viscosity: float
+    speed_of_sound: float
+    area: float
+    reynolds: float
+    mach: float
+    base_drag_coefficient: float
+    drag_coefficient: float
+    drag_force: float
+    projectile_shape: str
+    sphericity: float
+    drag_model: str
+    ballistic_coefficient: float
+
+
+class AccelerationState(TypedDict):
+    ax: float
+    ay: float
+    aero: AeroState
+
 
 def kelvin_from_celsius(temperature_c: float) -> float:
     return temperature_c + 273.15
@@ -127,12 +154,9 @@ def reynolds_number(density: float, speed: float, diameter: float, viscosity: fl
 def drag_coefficient_sphere(reynolds: float) -> float:
     if reynolds <= 0:
         return 0.0
-    phi = 1.0
-    a = math.exp(2.3288 - (6.4581 * phi) + (2.4486 * phi * phi))
-    b = 0.0964 + (0.5565 * phi)
-    c = math.exp(4.9050 - (13.8944 * phi) + (18.4222 * phi**2) - (10.2599 * phi**3))
-    d = math.exp(1.4681 + (12.2584 * phi) - (20.7322 * phi**2) + (15.8855 * phi**3))
-    return (24.0 / reynolds) * (1.0 + a * (reynolds**b)) + ((c * reynolds) / (d + reynolds))
+    return (24.0 / reynolds) * (1.0 + HL_SPHERE_A * (reynolds**HL_SPHERE_B)) + (
+        (HL_SPHERE_C * reynolds) / (HL_SPHERE_D + reynolds)
+    )
 
 
 def sphere_area_from_diameter(diameter: float) -> float:
@@ -191,6 +215,81 @@ def compressibility_drag_multiplier(mach: float) -> float:
     return 1.0 + ((mach * mach) / 4.0) + ((mach**4) / 40.0)
 
 
+def _shared_aerodynamic_state(
+    speed: float,
+    temperature_c: float,
+    pressure_atm: float,
+    diameter: float,
+    projectile_shape: str,
+    sphericity: float,
+    drag_model: str,
+    ballistic_coefficient: float,
+) -> AeroState:
+    density = air_density_from_conditions(temperature_c, pressure_atm)
+    viscosity = dynamic_viscosity_air(temperature_c)
+    sound_speed = speed_of_sound_air(temperature_c)
+    area = sphere_area_from_diameter(diameter)
+    reynolds = reynolds_number(density, speed, diameter, viscosity)
+    mach = mach_number(speed, temperature_c)
+    normalized_drag_model = "g1" if drag_model == "g1" else DEFAULT_SHELL_DRAG_MODEL
+    return {
+        "air_density": density,
+        "viscosity": viscosity,
+        "speed_of_sound": sound_speed,
+        "area": area,
+        "reynolds": reynolds,
+        "mach": mach,
+        "base_drag_coefficient": 0.0,
+        "drag_coefficient": 0.0,
+        "drag_force": 0.0,
+        "projectile_shape": projectile_shape,
+        "sphericity": sphericity,
+        "drag_model": normalized_drag_model,
+        "ballistic_coefficient": ballistic_coefficient,
+    }
+
+
+def _sphere_aerodynamic_state(base_state: AeroState, speed: float) -> AeroState:
+    base_drag_coefficient = drag_coefficient_sphere(base_state["reynolds"])
+    drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(base_state["mach"])
+    drag_force = 0.5 * base_state["air_density"] * drag_coefficient * base_state["area"] * speed * speed
+    return {
+        **base_state,
+        "base_drag_coefficient": base_drag_coefficient,
+        "drag_coefficient": drag_coefficient,
+        "drag_force": drag_force,
+        "ballistic_coefficient": 0.0,
+    }
+
+
+def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mass: float) -> AeroState:
+    effective_ballistic_coefficient = (
+        base_state["ballistic_coefficient"]
+        if base_state["ballistic_coefficient"] > 0
+        else DEFAULT_SHELL_BALLISTIC_COEFFICIENT
+    )
+    drag_accel = ballistic_drag_acceleration(
+        speed,
+        base_state["air_density"],
+        base_state["drag_model"],
+        effective_ballistic_coefficient,
+    )
+    drag_force = projectile_mass * drag_accel if projectile_mass > 0 else 0.0
+    if base_state["air_density"] > 0 and base_state["area"] > 0 and speed > 0 and drag_force > 0:
+        drag_coefficient = (2.0 * drag_force) / (
+            base_state["air_density"] * base_state["area"] * speed * speed
+        )
+    else:
+        drag_coefficient = 0.0
+    return {
+        **base_state,
+        "base_drag_coefficient": drag_coefficient,
+        "drag_coefficient": drag_coefficient,
+        "drag_force": drag_force,
+        "ballistic_coefficient": effective_ballistic_coefficient,
+    }
+
+
 def aerodynamic_state(
     speed: float,
     temperature_c: float,
@@ -201,43 +300,20 @@ def aerodynamic_state(
     projectile_mass: float = 0.0,
     drag_model: str = DEFAULT_SHELL_DRAG_MODEL,
     ballistic_coefficient: float = 0.0,
-) -> Dict[str, float]:
-    density = air_density_from_conditions(temperature_c, pressure_atm)
-    viscosity = dynamic_viscosity_air(temperature_c)
-    sound_speed = speed_of_sound_air(temperature_c)
-    area = sphere_area_from_diameter(diameter)
-    reynolds = reynolds_number(density, speed, diameter, viscosity)
-    mach = mach_number(speed, temperature_c)
-    normalized_drag_model = "g1" if drag_model == "g1" else DEFAULT_SHELL_DRAG_MODEL
-    effective_ballistic_coefficient = 0.0
+) -> AeroState:
+    base_state = _shared_aerodynamic_state(
+        speed,
+        temperature_c,
+        pressure_atm,
+        diameter,
+        projectile_shape,
+        sphericity,
+        drag_model,
+        ballistic_coefficient,
+    )
     if projectile_shape == "shell":
-        effective_ballistic_coefficient = ballistic_coefficient if ballistic_coefficient > 0 else DEFAULT_SHELL_BALLISTIC_COEFFICIENT
-        drag_accel = ballistic_drag_acceleration(speed, density, normalized_drag_model, effective_ballistic_coefficient)
-        drag_force = projectile_mass * drag_accel if projectile_mass > 0 else 0.0
-        if density > 0 and area > 0 and speed > 0 and drag_force > 0:
-            drag_coefficient = (2.0 * drag_force) / (density * area * speed * speed)
-        else:
-            drag_coefficient = 0.0
-        base_drag_coefficient = drag_coefficient
-    else:
-        base_drag_coefficient = drag_coefficient_sphere(reynolds)
-        drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(mach)
-        drag_force = 0.5 * density * drag_coefficient * area * speed * speed
-    return {
-        "air_density": density,
-        "viscosity": viscosity,
-        "speed_of_sound": sound_speed,
-        "area": area,
-        "reynolds": reynolds,
-        "mach": mach,
-        "base_drag_coefficient": base_drag_coefficient,
-        "drag_coefficient": drag_coefficient,
-        "drag_force": drag_force,
-        "projectile_shape": projectile_shape,
-        "sphericity": sphericity,
-        "drag_model": normalized_drag_model,
-        "ballistic_coefficient": effective_ballistic_coefficient,
-    }
+        return _shell_aerodynamic_state(base_state, speed, projectile_mass)
+    return _sphere_aerodynamic_state(base_state, speed)
 
 
 def drag_acceleration(

@@ -5,14 +5,13 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
-from main import (
+from ballistics.config import runtime_configuration_error
+from ballistics.constants import (
     ALLOWED_ORIGINS_ENV_VAR,
     API_KEY_ENV_VAR,
     DEFAULT_SHELL_BALLISTIC_COEFFICIENT,
     ENABLE_CHALLENGE_ENV_VAR,
-    FIXED_PLOT_BOUNDS,
     G,
-    HISTORICAL_GUN_PLOT_BOUNDS,
     MAX_DT,
     MAX_REQUEST_BODY_BYTES,
     MAX_SPEED,
@@ -25,15 +24,21 @@ from main import (
     PUBLIC_MODE_ENV_VAR,
     SESSION_COOKIE_NAME,
     SESSION_SECRET_ENV_VAR,
-    application,
-    analytical_metrics,
-    challenge_answer_is_correct,
-    material_density_from_mass_and_diameter,
-    normalize_simulation_params,
-    runtime_configuration_error,
-    simulation_response,
-    verify_signed_payload,
 )
+from ballistics.physics.drag import material_density_from_mass_and_diameter
+from ballistics.physics.ideal import analytical_metrics
+from ballistics.schemas import (
+    FIXED_PLOT_BOUNDS,
+    HISTORICAL_GUN_PLOT_BOUNDS,
+    normalize_simulation_params,
+    simulation_response,
+)
+from ballistics.web.app import create_application
+from ballistics.web.auth import verify_signed_payload
+from ballistics.web.challenge import challenge_answer_is_correct
+from ballistics.web.templates import HTML_PAGE
+
+application = create_application(HTML_PAGE)
 
 
 class SimulationApiTests(unittest.TestCase):

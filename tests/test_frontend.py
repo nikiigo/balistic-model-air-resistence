@@ -1,6 +1,7 @@
 import unittest
 
-from main import HTML_PAGE, MIN_PRESSURE_ATM
+from ballistics.constants import MIN_PRESSURE_ATM
+from ballistics.web.templates import HTML_PAGE
 
 
 class FrontendContractTests(unittest.TestCase):
