@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import argparse
-import html
+import base64
+import hashlib
+import hmac
+import json
 import math
 import mimetypes
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import os
+import secrets
+import time
+from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Dict
+from wsgiref.simple_server import make_server
 
 G = 9.81
 AIR_GAS_CONSTANT = 287.05
@@ -15,8 +22,34 @@ SUTHERLAND_MU0 = 1.716e-5
 SUTHERLAND_T0 = 273.15
 SUTHERLAND_S = 111.0
 MIN_PRESSURE_ATM = 0.001
+MAX_REQUEST_BODY_BYTES = 16 * 1024
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
+RESOLVED_ASSETS_DIR = ASSETS_DIR.resolve()
+API_KEY_ENV_VAR = "BALLISTICS_API_KEY"
+ALLOWED_ORIGINS_ENV_VAR = "BALLISTICS_ALLOWED_ORIGINS"
+PUBLIC_MODE_ENV_VAR = "BALLISTICS_PUBLIC_MODE"
+SESSION_SECRET_ENV_VAR = "BALLISTICS_SESSION_SECRET"
+SESSION_COOKIE_NAME = "ballistics_session"
+LOCAL_DEVELOPMENT_SESSION_SECRET = "local-dev-not-for-production"
+BOOTSTRAP_CHALLENGE_TTL_SECONDS = 600
+MIN_DT = 0.001
+MAX_DT = 0.1
+MIN_ANGLE_DEG = 0.0
+MAX_ANGLE_DEG = 90.0
+MIN_SPEED = 0.0
+MAX_SPEED = 600.0
+MIN_TEMPERATURE_C = -80.0
+MAX_TEMPERATURE_C = 80.0
+MAX_PRESSURE_ATM = 2.0
+MIN_DIAMETER_M = 0.001
+MAX_DIAMETER_M = 1.0
+MIN_MATERIAL_DENSITY = 1.0
+MAX_MATERIAL_DENSITY = 50000.0
+MIN_SPHERICITY = 0.05
+MAX_SPHERICITY = 1.0
+MIN_VOLUME_FACTOR = 0.05
+MAX_VOLUME_FACTOR = 20.0
 
 
 def analytical_metrics(speed: float, angle_deg: float, gravity: float = G) -> Dict[str, float]:
@@ -30,6 +63,40 @@ def analytical_metrics(speed: float, angle_deg: float, gravity: float = G) -> Di
         "flight_time": max(flight_time, 0.0),
         "max_height": max(max_height, 0.0),
         "range": max(range_distance, 0.0),
+    }
+
+
+def clamp(value: float, lower: float, upper: float) -> float:
+    return min(max(value, lower), upper)
+
+
+def simulate_ideal_reference(params: Dict[str, float]) -> Dict[str, object]:
+    metrics = analytical_metrics(params["speed"], params["angle"])
+    theta = math.radians(params["angle"])
+    vx = params["speed"] * math.cos(theta)
+    vy = params["speed"] * math.sin(theta)
+    flight_time = metrics["flight_time"]
+    step = max(params["dt"], (flight_time / 240.0) if flight_time > 0.0 else params["dt"])
+    points: list[Dict[str, float]] = []
+    t = 0.0
+
+    while t <= flight_time:
+        x = vx * t
+        y = (vy * t) - (0.5 * G * t * t)
+        points.append({"x": x, "y": max(0.0, y), "t": t, "vx": vx, "vy": vy - (G * t)})
+        t += step
+
+    peak_time = 0.0 if G <= 0.0 else max(vy / G, 0.0)
+    points.append({"x": metrics["range"], "y": 0.0, "t": flight_time, "vx": vx, "vy": -vy})
+    return {
+        "points": points,
+        "metrics": {
+            "range": metrics["range"],
+            "maxHeight": metrics["max_height"],
+            "flightTime": flight_time,
+            "finalSpeed": math.hypot(vx, -vy),
+            "peak": {"x": vx * peak_time, "y": metrics["max_height"]},
+        },
     }
 
 
@@ -316,29 +383,39 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) ->
             ratio = prev["y"] / (prev["y"] - y) if prev["y"] != y else 1.0
             impact_x = prev["x"] + (x - prev["x"]) * ratio
             impact_t = prev["t"] + (t - prev["t"]) * ratio
-            points.append({"x": impact_x, "y": 0.0, "t": impact_t, "vx": vx, "vy": vy, **aero})
+            impact_vx = prev["vx"] + (vx - prev["vx"]) * ratio
+            impact_vy = prev["vy"] + (vy - prev["vy"]) * ratio
+            impact_aero = aerodynamic_state(
+                math.hypot(impact_vx, impact_vy),
+                params["temperature"],
+                params["pressure"],
+                params["diameter"],
+                projectile_shape=projectile_shape,
+                sphericity=sphericity,
+            )
+            points.append({"x": impact_x, "y": 0.0, "t": impact_t, "vx": impact_vx, "vy": impact_vy, **impact_aero})
             return {
                 "points": points,
                 "metrics": {
                     "range": impact_x,
                     "max_height": max_height,
                     "flight_time": impact_t,
-                    "final_speed": math.hypot(vx, vy),
+                    "final_speed": math.hypot(impact_vx, impact_vy),
                     "peak": peak,
                 },
                 "aero": {
                     "projectile_mass": projectile_mass,
                     "projectile_shape": projectile_shape,
                     "sphericity": sphericity,
-                    "air_density": aero["air_density"],
-                    "viscosity": aero["viscosity"],
-                    "area": aero["area"],
+                    "air_density": impact_aero["air_density"],
+                    "viscosity": impact_aero["viscosity"],
+                    "area": impact_aero["area"],
                     "launch_reynolds": points[0]["reynolds"],
                     "launch_drag_coefficient": points[0]["drag_coefficient"],
                     "launch_drag_force": points[0]["drag_force"],
-                    "impact_reynolds": aero["reynolds"],
-                    "impact_drag_coefficient": aero["drag_coefficient"],
-                    "impact_drag_force": aero["drag_force"],
+                    "impact_reynolds": impact_aero["reynolds"],
+                    "impact_drag_coefficient": impact_aero["drag_coefficient"],
+                    "impact_drag_force": impact_aero["drag_force"],
                 },
             }
 
@@ -367,6 +444,424 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) ->
             "impact_drag_coefficient": aero["drag_coefficient"],
             "impact_drag_force": aero["drag_force"],
         },
+    }
+
+
+def compute_plot_bounds(params: Dict[str, float]) -> Dict[str, float]:
+    sampled_angles = [5.0, 15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0]
+    max_x = 1.0
+    max_y = 1.0
+
+    for angle in sampled_angles:
+        sample_params = {**params, "angle": angle}
+        ideal = simulate_ideal_reference(sample_params)
+        drag = simulate_drag_reference(sample_params)
+        max_x = max(max_x, ideal["metrics"]["range"], drag["metrics"]["range"])
+        max_y = max(max_y, ideal["metrics"]["maxHeight"], drag["metrics"]["max_height"])
+
+    return {"maxX": max_x * 1.08, "maxY": max_y * 1.15}
+
+
+def compute_focused_plot_bounds(params: Dict[str, float]) -> Dict[str, float]:
+    sampled_angles = sorted({
+        max(5.0, params["angle"] - 10.0),
+        params["angle"],
+        min(85.0, params["angle"] + 10.0),
+    })
+    max_x = 1.0
+    max_y = 1.0
+
+    for angle in sampled_angles:
+        sample_params = {**params, "angle": angle}
+        ideal = simulate_ideal_reference(sample_params)
+        drag = simulate_drag_reference(sample_params)
+        max_x = max(max_x, ideal["metrics"]["range"], drag["metrics"]["range"])
+        max_y = max(max_y, ideal["metrics"]["maxHeight"], drag["metrics"]["max_height"])
+
+    return {"maxX": max_x * 1.1, "maxY": max_y * 1.18}
+
+
+def serialize_drag_result(result: Dict[str, object]) -> Dict[str, object]:
+    points = [
+        {
+            "x": point["x"],
+            "y": point["y"],
+            "t": point["t"],
+            "vx": point["vx"],
+            "vy": point["vy"],
+            "airDensity": point["air_density"],
+            "viscosity": point["viscosity"],
+            "speedOfSound": point["speed_of_sound"],
+            "area": point["area"],
+            "reynolds": point["reynolds"],
+            "mach": point["mach"],
+            "baseDragCoefficient": point["base_drag_coefficient"],
+            "dragCoefficient": point["drag_coefficient"],
+            "dragForce": point["drag_force"],
+        }
+        for point in result["points"]
+    ]
+    metrics = result["metrics"]
+    aero = result["aero"]
+    return {
+        "points": points,
+        "metrics": {
+            "range": metrics["range"],
+            "maxHeight": metrics["max_height"],
+            "flightTime": metrics["flight_time"],
+            "finalSpeed": metrics["final_speed"],
+            "peak": metrics["peak"],
+        },
+        "aero": {
+            "projectileMass": aero["projectile_mass"],
+            "projectileShape": aero["projectile_shape"],
+            "sphericity": aero["sphericity"],
+            "airDensity": aero["air_density"],
+            "viscosity": aero["viscosity"],
+            "area": aero["area"],
+            "launchReynolds": aero["launch_reynolds"],
+            "launchDragCoefficient": aero["launch_drag_coefficient"],
+            "launchDragForce": aero["launch_drag_force"],
+            "impactReynolds": aero["impact_reynolds"],
+            "impactDragCoefficient": aero["impact_drag_coefficient"],
+            "impactDragForce": aero["impact_drag_force"],
+        },
+    }
+
+
+DEFAULT_SIMULATION_PARAMS = {
+    "angle": 45.0,
+    "speed": 55.0,
+    "materialDensity": material_density_from_mass_and_diameter(1.0, 0.113),
+    "temperature": 15.0,
+    "pressure": 1.0,
+    "diameter": 0.113,
+    "dt": 0.016,
+    "projectileShape": "sphere",
+    "sphericity": 1.0,
+    "volumeFactor": 1.0,
+}
+
+REFERENCE_PRESETS = {
+    "vacuum": {
+        "angle": 45.0,
+        "speed": 50.0,
+        "materialDensity": material_density_from_mass_and_diameter(1.0, 0.113),
+        "temperature": 15.0,
+        "pressure": MIN_PRESSURE_ATM,
+        "diameter": 0.113,
+        "dt": 0.016,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "highDrag": {
+        "angle": 42.0,
+        "speed": 48.0,
+        "materialDensity": material_density_from_mass_and_diameter(0.45, 0.239),
+        "temperature": 30.0,
+        "pressure": 1.05,
+        "diameter": 0.239,
+        "dt": 0.012,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "heavy": {
+        "angle": 45.0,
+        "speed": 55.0,
+        "materialDensity": material_density_from_mass_and_diameter(8.0, 0.124),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.124,
+        "dt": 0.016,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "longRange": {
+        "angle": 34.0,
+        "speed": 120.0,
+        "materialDensity": material_density_from_mass_and_diameter(5.0, 0.101),
+        "temperature": 5.0,
+        "pressure": 0.9,
+        "diameter": 0.101,
+        "dt": 0.01,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+}
+
+HISTORICAL_PLOT_REFERENCE_PARAMS = {
+    "ballista": {
+        "angle": 35.0,
+        "speed": 70.0,
+        "materialDensity": material_density_from_mass_and_diameter(0.85, 0.05, 4.6),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.05,
+        "dt": 0.016,
+        "projectileShape": "shell",
+        "sphericity": 0.4,
+        "volumeFactor": 4.6,
+    },
+    "mangonel": {
+        "angle": 38.0,
+        "speed": 42.0,
+        "materialDensity": material_density_from_mass_and_diameter(12.0, 0.18),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.18,
+        "dt": 0.02,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "trebuchet": {
+        "angle": 43.0,
+        "speed": 55.0,
+        "materialDensity": material_density_from_mass_and_diameter(30.0, 0.28),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.28,
+        "dt": 0.02,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "saker": {
+        "angle": 15.0,
+        "speed": 164.0,
+        "materialDensity": material_density_from_mass_and_diameter(2.38, 0.083),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.083,
+        "dt": 0.016,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "basilisk": {
+        "angle": 16.0,
+        "speed": 134.0,
+        "materialDensity": material_density_from_mass_and_diameter(4.54, 0.121),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.121,
+        "dt": 0.02,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "culverin": {
+        "angle": 9.0,
+        "speed": 408.0,
+        "materialDensity": material_density_from_mass_and_diameter(9.07, 0.14),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.14,
+        "dt": 0.012,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "demiCulverin": {
+        "angle": 14.0,
+        "speed": 145.0,
+        "materialDensity": material_density_from_mass_and_diameter(3.63, 0.102),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.102,
+        "dt": 0.016,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "falconet": {
+        "angle": 17.0,
+        "speed": 122.0,
+        "materialDensity": material_density_from_mass_and_diameter(0.45, 0.051),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.051,
+        "dt": 0.018,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "demiCannon": {
+        "angle": 11.0,
+        "speed": 95.0,
+        "materialDensity": material_density_from_mass_and_diameter(14.5, 0.159),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.159,
+        "dt": 0.02,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "gribeauval": {
+        "angle": 18.0,
+        "speed": 133.0,
+        "materialDensity": material_density_from_mass_and_diameter(5.88, 0.121),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.121,
+        "dt": 0.02,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "paixhans": {
+        "angle": 5.0,
+        "speed": 400.0,
+        "materialDensity": material_density_from_mass_and_diameter(30.0, 0.22, 1.35),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.22,
+        "dt": 0.01,
+        "projectileShape": "shell",
+        "sphericity": 0.72,
+        "volumeFactor": 1.35,
+    },
+    "armstrong": {
+        "angle": 8.0,
+        "speed": 378.0,
+        "materialDensity": material_density_from_mass_and_diameter(5.1, 0.076, 2.85),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.076,
+        "dt": 0.01,
+        "projectileShape": "shell",
+        "sphericity": 0.64,
+        "volumeFactor": 2.85,
+    },
+    "ordnance": {
+        "angle": 10.0,
+        "speed": 370.0,
+        "materialDensity": material_density_from_mass_and_diameter(4.3, 0.076, 2.4),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.076,
+        "dt": 0.01,
+        "projectileShape": "shell",
+        "sphericity": 0.66,
+        "volumeFactor": 2.4,
+    },
+    "napoleon": {
+        "angle": 12.0,
+        "speed": 439.0,
+        "materialDensity": material_density_from_mass_and_diameter(5.44, 0.117),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.117,
+        "dt": 0.012,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+    "parrott": {
+        "angle": 5.0,
+        "speed": 375.0,
+        "materialDensity": material_density_from_mass_and_diameter(4.3, 0.074, 2.6),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.074,
+        "dt": 0.01,
+        "projectileShape": "shell",
+        "sphericity": 0.65,
+        "volumeFactor": 2.6,
+    },
+    "longGun24": {
+        "angle": 6.0,
+        "speed": 450.0,
+        "materialDensity": material_density_from_mass_and_diameter(10.89, 0.1522),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.1522,
+        "dt": 0.012,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
+}
+
+PLOT_REFERENCE_SCENARIOS = [
+    DEFAULT_SIMULATION_PARAMS,
+    *REFERENCE_PRESETS.values(),
+    *HISTORICAL_PLOT_REFERENCE_PARAMS.values(),
+    {**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM},
+    {**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM},
+    {
+        **DEFAULT_SIMULATION_PARAMS,
+        "angle": 45.0,
+        "speed": 440.0,
+        "materialDensity": 12000.0,
+        "temperature": -10.0,
+        "pressure": 1.2,
+        "diameter": 0.01,
+    },
+]
+
+FIXED_PLOT_BOUNDS = {"maxX": 1.0, "maxY": 1.0}
+for _plot_params in PLOT_REFERENCE_SCENARIOS:
+    _sample_bounds = compute_plot_bounds(_plot_params)
+    FIXED_PLOT_BOUNDS["maxX"] = max(FIXED_PLOT_BOUNDS["maxX"], _sample_bounds["maxX"])
+    FIXED_PLOT_BOUNDS["maxY"] = max(FIXED_PLOT_BOUNDS["maxY"], _sample_bounds["maxY"])
+FIXED_PLOT_BOUNDS["maxX"] = max(2400.0, FIXED_PLOT_BOUNDS["maxX"])
+FIXED_PLOT_BOUNDS["maxY"] = max(850.0, FIXED_PLOT_BOUNDS["maxY"])
+
+HISTORICAL_GUN_PLOT_BOUNDS = {}
+for _gun_key, _gun_params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
+    _gun_bounds = compute_focused_plot_bounds(_gun_params)
+    HISTORICAL_GUN_PLOT_BOUNDS[_gun_key] = {
+        "maxX": max(200.0, _gun_bounds["maxX"]),
+        "maxY": max(80.0, _gun_bounds["maxY"]),
+    }
+
+
+def normalize_simulation_params(payload: Dict[str, object]) -> Dict[str, float | str]:
+    params: Dict[str, float | str] = {**DEFAULT_SIMULATION_PARAMS}
+    numeric_fields = ("angle", "speed", "materialDensity", "temperature", "pressure", "diameter", "dt", "sphericity", "volumeFactor")
+    for field in numeric_fields:
+        if field in payload:
+            candidate = float(payload[field])
+            if not math.isfinite(candidate):
+                raise ValueError(f"{field} must be finite.")
+            params[field] = candidate
+
+    projectile_shape = str(payload.get("projectileShape", params["projectileShape"]))
+    params["projectileShape"] = "shell" if projectile_shape == "shell" else "sphere"
+    params["angle"] = clamp(float(params["angle"]), MIN_ANGLE_DEG, MAX_ANGLE_DEG)
+    params["speed"] = clamp(float(params["speed"]), MIN_SPEED, MAX_SPEED)
+    params["materialDensity"] = clamp(float(params["materialDensity"]), MIN_MATERIAL_DENSITY, MAX_MATERIAL_DENSITY)
+    params["temperature"] = clamp(float(params["temperature"]), MIN_TEMPERATURE_C, MAX_TEMPERATURE_C)
+    params["pressure"] = clamp(float(params["pressure"]), MIN_PRESSURE_ATM, MAX_PRESSURE_ATM)
+    params["diameter"] = clamp(float(params["diameter"]), MIN_DIAMETER_M, MAX_DIAMETER_M)
+    params["dt"] = clamp(float(params["dt"]), MIN_DT, MAX_DT)
+    if params["projectileShape"] != "shell":
+        params["sphericity"] = 1.0
+        params["volumeFactor"] = 1.0
+    else:
+        params["sphericity"] = clamp(float(params["sphericity"]), MIN_SPHERICITY, MAX_SPHERICITY)
+        params["volumeFactor"] = clamp(float(params["volumeFactor"]), MIN_VOLUME_FACTOR, MAX_VOLUME_FACTOR)
+    return params
+
+
+def simulation_response(payload: Dict[str, object]) -> Dict[str, object]:
+    params = normalize_simulation_params(payload)
+    current_gun = payload.get("currentGun")
+    ideal = simulate_ideal_reference(params)
+    drag = serialize_drag_result(simulate_drag_reference(params))
+    focused_bounds = compute_focused_plot_bounds(params)
+    stable_bounds = HISTORICAL_GUN_PLOT_BOUNDS.get(str(current_gun), FIXED_PLOT_BOUNDS)
+    return {
+        "ideal": ideal,
+        "drag": drag,
+        "focusedBounds": focused_bounds,
+        "stableBounds": stable_bounds,
     }
 
 
@@ -981,6 +1476,49 @@ HTML_PAGE = """<!DOCTYPE html>
       color: var(--muted);
     }
 
+    .bootstrap-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(31, 31, 26, 0.46);
+      backdrop-filter: blur(6px);
+    }
+
+    .bootstrap-gate.hidden {
+      display: none;
+    }
+
+    .bootstrap-card {
+      width: min(520px, 100%);
+      padding: 24px;
+      border-radius: 22px;
+      background: rgba(255, 248, 236, 0.98);
+      border: 1px solid var(--border);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+      display: grid;
+      gap: 14px;
+    }
+
+    .bootstrap-card h2 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .bootstrap-form {
+      display: grid;
+      gap: 10px;
+    }
+
+    .bootstrap-error {
+      min-height: 1.2em;
+      color: var(--accent);
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+
     @media (max-width: 1080px) {
       .shell {
         grid-template-columns: 1fr;
@@ -1290,12 +1828,21 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
     </aside>
   </main>
+  <div class="bootstrap-gate hidden" id="bootstrapGate">
+    <div class="bootstrap-card">
+      <p class="muted">Verification step</p>
+      <h2>Answer One Physics Question</h2>
+      <div class="muted" id="bootstrapPrompt"></div>
+      <div class="bootstrap-form">
+        <input id="bootstrapAnswer" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter your answer">
+        <button type="button" class="primary" id="bootstrapSubmitBtn">Unlock simulator</button>
+        <div class="bootstrap-error" id="bootstrapError"></div>
+      </div>
+    </div>
+  </div>
   <script>
-    const AIR_GAS_CONSTANT = 287.05;
-    const AIR_HEAT_CAPACITY_RATIO = 1.4;
-    const SUTHERLAND_MU0 = 1.716e-5;
-    const SUTHERLAND_T0 = 273.15;
-    const SUTHERLAND_S = 111;
+    const INITIAL_CSRF_TOKEN = "__CSRF_TOKEN__";
+    const BOOTSTRAP_CHALLENGE = __BOOTSTRAP_CHALLENGE__;
 
     function sphereVolumeFromDiameter(diameter) {
       if (diameter <= 0) {
@@ -1352,7 +1899,7 @@ HTML_PAGE = """<!DOCTYPE html>
       speed: (v) => `${Number(v).toFixed(1)} m/s`,
       materialDensity: (v) => `${Number(v).toFixed(0)} kg/m³`,
       temperature: (v) => `${Number(v).toFixed(1)} °C`,
-      pressure: (v) => `${Number(v).toFixed(2)} atm`,
+      pressure: (v) => `${Number(v) < 0.01 ? Number(v).toFixed(3) : Number(v).toFixed(2)} atm`,
       diameter: (v) => `${Number(v).toFixed(3)} m`,
       dt: (v) => `${Number(v).toFixed(3)} s`,
     };
@@ -1374,6 +1921,11 @@ HTML_PAGE = """<!DOCTYPE html>
     const gunHoverSpecs = document.getElementById("gunHoverSpecs");
     const gunHoverNote = document.getElementById("gunHoverNote");
     const gunHoverSources = document.getElementById("gunHoverSources");
+    const bootstrapGate = document.getElementById("bootstrapGate");
+    const bootstrapPrompt = document.getElementById("bootstrapPrompt");
+    const bootstrapAnswer = document.getElementById("bootstrapAnswer");
+    const bootstrapSubmitBtn = document.getElementById("bootstrapSubmitBtn");
+    const bootstrapError = document.getElementById("bootstrapError");
 
     const controls = {
       angle: document.getElementById("angle"),
@@ -1684,6 +2236,10 @@ HTML_PAGE = """<!DOCTYPE html>
       params: { ...defaults },
       ideal: null,
       drag: null,
+      focusedBounds: null,
+      stableBounds: null,
+      csrfToken: INITIAL_CSRF_TOKEN,
+      bootstrapChallenge: BOOTSTRAP_CHALLENGE,
       currentGun: null,
       presetModified: false,
       scaleMode: "stable",
@@ -1691,78 +2247,16 @@ HTML_PAGE = """<!DOCTYPE html>
       hoverHideTimer: null,
       controlsCollapsed: false,
       animationStart: 0,
-      animating: false
+      animating: false,
+      requestSerial: 0,
+      requestController: null
     };
 
-    function computePlotBounds(params) {
-      const sampledAngles = [5, 15, 25, 35, 45, 55, 65, 75, 85];
-      let maxX = 1;
-      let maxY = 1;
-
-      sampledAngles.forEach((angle) => {
-        const sampleParams = { ...params, angle };
-        const ideal = simulateIdeal(sampleParams);
-        const drag = simulateDrag(sampleParams);
-        maxX = Math.max(maxX, ideal.metrics.range, drag.metrics.range);
-        maxY = Math.max(maxY, ideal.metrics.maxHeight, drag.metrics.maxHeight);
-      });
-
-      return { maxX: maxX * 1.08, maxY: maxY * 1.15 };
-    }
-
-    function computeFocusedPlotBounds(params) {
-      const sampledAngles = Array.from(new Set([
-        Math.max(5, params.angle - 10),
-        params.angle,
-        Math.min(85, params.angle + 10)
-      ])).sort((left, right) => left - right);
-      let maxX = 1;
-      let maxY = 1;
-
-      sampledAngles.forEach((angle) => {
-        const sampleParams = { ...params, angle };
-        const ideal = simulateIdeal(sampleParams);
-        const drag = simulateDrag(sampleParams);
-        maxX = Math.max(maxX, ideal.metrics.range, drag.metrics.range);
-        maxY = Math.max(maxY, ideal.metrics.maxHeight, drag.metrics.maxHeight);
-      });
-
-      return { maxX: maxX * 1.1, maxY: maxY * 1.18 };
-    }
-
-    const plotReferenceScenarios = [
-      defaults,
-      ...Object.values(presets),
-      ...Object.values(historicalGuns).map((gun) => gun.params),
-      { ...defaults, angle: 45, speed: 440, pressure: MIN_PRESSURE },
-      { ...defaults, angle: 85, speed: 440, pressure: MIN_PRESSURE },
-      { ...defaults, angle: 45, speed: 440, materialDensity: 12000, temperature: -10, pressure: 1.2, diameter: 0.01 }
-    ];
-
-    const FIXED_PLOT_BOUNDS = plotReferenceScenarios.reduce((bounds, params) => {
-      const sampleBounds = computePlotBounds(params);
-      return {
-        maxX: Math.max(bounds.maxX, sampleBounds.maxX),
-        maxY: Math.max(bounds.maxY, sampleBounds.maxY)
-      };
-    }, { maxX: 1, maxY: 1 });
-    FIXED_PLOT_BOUNDS.maxX = Math.max(2400, FIXED_PLOT_BOUNDS.maxX);
-    FIXED_PLOT_BOUNDS.maxY = Math.max(850, FIXED_PLOT_BOUNDS.maxY);
-    const HISTORICAL_GUN_PLOT_BOUNDS = Object.fromEntries(
-      Object.entries(historicalGuns).map(([key, gun]) => {
-        const gunBounds = computeFocusedPlotBounds(gun.params);
-        return [key, {
-          maxX: Math.max(200, gunBounds.maxX),
-          maxY: Math.max(80, gunBounds.maxY)
-        }];
-      })
-    );
-
     function activePlotBounds() {
-      if (state.scaleMode === "fit") {
-        return computeFocusedPlotBounds(state.params);
+      if (state.scaleMode === "fit" && state.focusedBounds) {
+        return state.focusedBounds;
       }
-      return state.currentGun ? HISTORICAL_GUN_PLOT_BOUNDS[state.currentGun] : FIXED_PLOT_BOUNDS;
+      return state.stableBounds || state.focusedBounds || { maxX: 2400, maxY: 850 };
     }
 
     function updateScaleButtons() {
@@ -1957,277 +2451,94 @@ HTML_PAGE = """<!DOCTYPE html>
         : "Manual setup";
     }
 
-    function temperatureToKelvin(temperatureC) {
-      return temperatureC + 273.15;
-    }
-
-    function pressureToPa(pressureAtm) {
-      return pressureAtm * 101325;
-    }
-
     function clampPressure(pressureAtm) {
       return Math.max(pressureAtm, MIN_PRESSURE);
     }
 
-    function airDensityFromParams(params) {
-      const temperatureK = temperatureToKelvin(params.temperature);
-      if (temperatureK <= 0) {
-        return 0;
-      }
-      return pressureToPa(clampPressure(params.pressure)) / (AIR_GAS_CONSTANT * temperatureK);
+    function bootstrapRequired() {
+      return !state.csrfToken;
     }
 
-    function dynamicViscosity(temperatureC) {
-      const temperatureK = temperatureToKelvin(temperatureC);
-      if (temperatureK <= 0) {
-        return 0;
+    function updateBootstrapGate() {
+      const challengeRequired = state.bootstrapChallenge && state.bootstrapChallenge.required !== false;
+      bootstrapGate.classList.toggle("hidden", !challengeRequired || !bootstrapRequired());
+      if (challengeRequired && bootstrapRequired()) {
+        bootstrapPrompt.textContent = state.bootstrapChallenge.prompt;
       }
-      return SUTHERLAND_MU0 * ((temperatureK / SUTHERLAND_T0) ** 1.5) * ((SUTHERLAND_T0 + SUTHERLAND_S) / (temperatureK + SUTHERLAND_S));
     }
 
-    function speedOfSound(temperatureC) {
-      const temperatureK = temperatureToKelvin(temperatureC);
-      if (temperatureK <= 0) {
-        return 0;
-      }
-      return Math.sqrt(AIR_HEAT_CAPACITY_RATIO * AIR_GAS_CONSTANT * temperatureK);
-    }
-
-    function machNumber(speed, temperatureC) {
-      const soundSpeed = speedOfSound(temperatureC);
-      if (soundSpeed <= 0 || speed <= 0) {
-        return 0;
-      }
-      return speed / soundSpeed;
-    }
-
-    function sphereArea(diameter) {
-      return Math.PI * diameter * diameter / 4;
-    }
-
-    function reynoldsNumber(density, speed, diameter, viscosity) {
-      if (density <= 0 || speed <= 0 || diameter <= 0 || viscosity <= 0) {
-        return 0;
-      }
-      return density * speed * diameter / viscosity;
-    }
-
-    function smoothstep(value, edge0, edge1) {
-      if (edge1 <= edge0) {
-        return 0;
-      }
-      const scaled = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
-      return scaled * scaled * (3 - (2 * scaled));
-    }
-
-    function interpolate(value, edge0, edge1, start, end) {
-      return start + ((end - start) * smoothstep(value, edge0, edge1));
-    }
-
-    function dragCoefficientForReynolds(reynolds) {
-      if (reynolds <= 0) {
-        return 0;
-      }
-      if (reynolds < 0.1) {
-        return 24 / reynolds;
-      }
-      if (reynolds < 1000) {
-        return (24 / reynolds) * (1 + 0.15 * (reynolds ** 0.687));
-      }
-      return 0.44;
-    }
-
-    function dragCoefficientForNonspherical(reynolds, sphericity) {
-      if (reynolds <= 0 || sphericity <= 0 || sphericity > 1) {
-        return 0;
-      }
-      const a = Math.exp(2.3288 - (6.4581 * sphericity) + (2.4486 * sphericity * sphericity));
-      const b = 0.0964 + (0.5565 * sphericity);
-      const c = Math.exp(4.905 - (13.8944 * sphericity) + (18.4222 * sphericity * sphericity) - (10.2599 * sphericity ** 3));
-      const d = Math.exp(1.4681 + (12.2584 * sphericity) - (20.7322 * sphericity * sphericity) + (15.8855 * sphericity ** 3));
-      return (24 / reynolds) * (1 + (a * (reynolds ** b))) + (c / (1 + (d / reynolds)));
-    }
-
-    function compressibilityDragMultiplier(mach) {
-      if (mach <= 0.6) {
-        return 1;
-      }
-      if (mach < 0.9) {
-        return interpolate(mach, 0.6, 0.9, 1, 1.35);
-      }
-      if (mach < 1.1) {
-        return interpolate(mach, 0.9, 1.1, 1.35, 2.15);
-      }
-      if (mach < 1.5) {
-        return interpolate(mach, 1.1, 1.5, 2.15, 2);
-      }
-      return 2;
-    }
-
-    function aerodynamicState(speed, params, density, viscosity, area) {
-      const reynolds = reynoldsNumber(density, speed, params.diameter, viscosity);
-      const mach = machNumber(speed, params.temperature);
-      const baseDragCoefficient = params.projectileShape === "shell"
-        ? dragCoefficientForNonspherical(reynolds, params.sphericity)
-        : dragCoefficientForReynolds(reynolds);
-      const dragCoefficient = baseDragCoefficient * compressibilityDragMultiplier(mach);
-      const dragForce = 0.5 * density * dragCoefficient * area * speed * speed;
-      return {
-        airDensity: density,
-        viscosity,
-        speedOfSound: speedOfSound(params.temperature),
-        area,
-        reynolds,
-        mach,
-        baseDragCoefficient,
-        dragCoefficient,
-        dragForce
-      };
-    }
-
-    function dragAcceleration(vx, vy, params, projectileMass, density, viscosity, area) {
-      const speed = Math.hypot(vx, vy);
-      const aero = aerodynamicState(speed, params, density, viscosity, area);
-      const dragAccelScale = speed === 0 || projectileMass <= 0 ? 0 : aero.dragForce / (projectileMass * speed);
-      return {
-        ax: -dragAccelScale * vx,
-        ay: -9.81 - (dragAccelScale * vy),
-        aero
-      };
-    }
-
-    function derivedProjectileMass(params) {
-      return massFromMaterialDensity(params.materialDensity, params.diameter, params.volumeFactor || 1);
-    }
-
-    function simulateIdeal(params) {
-      const theta = params.angle * Math.PI / 180;
-      const vx = params.speed * Math.cos(theta);
-      const vy = params.speed * Math.sin(theta);
-      const flightTime = (2 * vy) / 9.81;
-      const points = [];
-      const step = Math.max(params.dt, flightTime / 240 || params.dt);
-      let maxHeight = 0;
-
-      for (let t = 0; t <= flightTime; t += step) {
-        const x = vx * t;
-        const y = (vy * t) - (0.5 * 9.81 * t * t);
-        points.push({ x, y: Math.max(0, y), t, vx, vy: vy - 9.81 * t });
-        maxHeight = Math.max(maxHeight, y);
-      }
-
-      const range = vx * flightTime;
-      points.push({ x: range, y: 0, t: flightTime, vx, vy: -vy });
-      return {
-        points,
-        metrics: {
-          range,
-          maxHeight,
-          flightTime,
-          finalSpeed: Math.hypot(vx, -vy),
-          peak: { x: vx * (vy / 9.81), y: maxHeight }
+    async function bootstrapSession() {
+      bootstrapError.textContent = "";
+      bootstrapSubmitBtn.disabled = true;
+      try {
+        const response = await fetch("/session/bootstrap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: state.bootstrapChallenge.token,
+            answer: bootstrapAnswer.value,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          bootstrapError.textContent = payload.error || "Verification failed.";
+          return false;
         }
-      };
-    }
-
-    function simulateDrag(params) {
-      const theta = params.angle * Math.PI / 180;
-      let x = 0;
-      let y = 0;
-      let vx = params.speed * Math.cos(theta);
-      let vy = params.speed * Math.sin(theta);
-      const dt = params.dt;
-      const density = airDensityFromParams(params);
-      const viscosity = dynamicViscosity(params.temperature);
-      const area = sphereArea(params.diameter);
-      const projectileMass = derivedProjectileMass(params);
-      let aero = aerodynamicState(Math.hypot(vx, vy), params, density, viscosity, area);
-      const points = [{ x, y, t: 0, vx, vy, ...aero }];
-      let t = 0;
-      let maxHeight = 0;
-      let peak = { x: 0, y: 0 };
-
-      for (let i = 0; i < 25000; i += 1) {
-        const k1 = dragAcceleration(vx, vy, params, projectileMass, density, viscosity, area);
-        const k2 = dragAcceleration(vx + (k1.ax * dt / 2), vy + (k1.ay * dt / 2), params, projectileMass, density, viscosity, area);
-        const k3 = dragAcceleration(vx + (k2.ax * dt / 2), vy + (k2.ay * dt / 2), params, projectileMass, density, viscosity, area);
-        const k4 = dragAcceleration(vx + (k3.ax * dt), vy + (k3.ay * dt), params, projectileMass, density, viscosity, area);
-
-        x += dt * (vx + 2 * (vx + (k1.ax * dt / 2)) + 2 * (vx + (k2.ax * dt / 2)) + (vx + (k3.ax * dt))) / 6;
-        y += dt * (vy + 2 * (vy + (k1.ay * dt / 2)) + 2 * (vy + (k2.ay * dt / 2)) + (vy + (k3.ay * dt))) / 6;
-        vx += dt * (k1.ax + (2 * k2.ax) + (2 * k3.ax) + k4.ax) / 6;
-        vy += dt * (k1.ay + (2 * k2.ay) + (2 * k3.ay) + k4.ay) / 6;
-        aero = aerodynamicState(Math.hypot(vx, vy), params, density, viscosity, area);
-        t += dt;
-
-        if (y > maxHeight) {
-          maxHeight = y;
-          peak = { x, y };
-        }
-
-        if (y <= 0 && t > 0) {
-          const prev = points[points.length - 1];
-          const ratio = prev.y / (prev.y - y || 1);
-          const impactX = prev.x + (x - prev.x) * ratio;
-          const impactT = prev.t + (t - prev.t) * ratio;
-          points.push({ x: impactX, y: 0, t: impactT, vx, vy, ...aero });
-          return {
-            points,
-            metrics: {
-              range: impactX,
-              maxHeight,
-              flightTime: impactT,
-              finalSpeed: Math.hypot(vx, vy),
-              peak
-            },
-            aero: {
-              projectileMass,
-              airDensity: density,
-              viscosity,
-              area,
-              launchReynolds: points[0].reynolds,
-              launchDragCoefficient: points[0].dragCoefficient,
-              launchDragForce: points[0].dragForce,
-              impactReynolds: aero.reynolds,
-              impactDragCoefficient: aero.dragCoefficient,
-              impactDragForce: aero.dragForce
-            }
-          };
-        }
-
-        points.push({ x, y, t, vx, vy, ...aero });
+        state.csrfToken = payload.csrfToken;
+        state.bootstrapChallenge = { required: false };
+        bootstrapAnswer.value = "";
+        updateBootstrapGate();
+        return true;
+      } finally {
+        bootstrapSubmitBtn.disabled = false;
       }
-
-      return {
-        points,
-        metrics: {
-          range: x,
-          maxHeight,
-          flightTime: t,
-          finalSpeed: Math.hypot(vx, vy),
-          peak
-        },
-        aero: {
-          projectileMass,
-          airDensity: density,
-          viscosity,
-          area,
-          launchReynolds: points[0].reynolds,
-          launchDragCoefficient: points[0].dragCoefficient,
-          launchDragForce: points[0].dragForce,
-          impactReynolds: aero.reynolds,
-          impactDragCoefficient: aero.dragCoefficient,
-          impactDragForce: aero.dragForce
-        }
-      };
     }
 
-    function recalculatePhysics() {
-      state.ideal = simulateIdeal(state.params);
-      state.drag = simulateDrag(state.params);
+    async function recalculatePhysics() {
+      if (bootstrapRequired()) {
+        updateBootstrapGate();
+        return false;
+      }
+      const requestSerial = state.requestSerial + 1;
+      state.requestSerial = requestSerial;
+      if (state.requestController) {
+        state.requestController.abort();
+      }
+      const controller = new AbortController();
+      state.requestController = controller;
+
+      try {
+        const response = await fetch("/api/simulate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": state.csrfToken },
+          body: JSON.stringify({ ...state.params, currentGun: state.currentGun }),
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error(`Simulation request failed with ${response.status}`);
+        }
+        const payload = await response.json();
+        if (requestSerial !== state.requestSerial) {
+          return false;
+        }
+        state.ideal = payload.ideal;
+        state.drag = payload.drag;
+        state.focusedBounds = payload.focusedBounds;
+        state.stableBounds = payload.stableBounds;
+        state.requestController = null;
+        return true;
+      } catch (error) {
+        if (error.name === "AbortError") {
+          return false;
+        }
+        throw error;
+      }
     }
 
     function redrawDisplay() {
+      if (!state.ideal || !state.drag) {
+        return;
+      }
       document.getElementById("hero-drag-speed").textContent = `${state.drag.metrics.finalSpeed.toFixed(1)} m/s`;
       document.getElementById("hero-ideal-time").textContent = `${state.ideal.metrics.flightTime.toFixed(2)} s`;
       document.getElementById("hero-drag-time").textContent = `${state.drag.metrics.flightTime.toFixed(2)} s`;
@@ -2236,10 +2547,14 @@ HTML_PAGE = """<!DOCTYPE html>
       drawScene(1);
     }
 
-    function recompute() {
+    async function recompute() {
       updateLabels();
-      recalculatePhysics();
+      const applied = await recalculatePhysics();
+      if (!applied) {
+        return false;
+      }
       redrawDisplay();
+      return true;
     }
 
     function renderMetrics() {
@@ -2539,8 +2854,11 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
-    function launch() {
-      recompute();
+    async function launch() {
+      const applied = await recompute();
+      if (!applied) {
+        return;
+      }
       state.animating = true;
       state.animationStart = 0;
       requestAnimationFrame(animate);
@@ -2552,6 +2870,21 @@ HTML_PAGE = """<!DOCTYPE html>
     });
 
     launchBtn.addEventListener("click", launch);
+    bootstrapSubmitBtn.addEventListener("click", async () => {
+      const unlocked = await bootstrapSession();
+      if (unlocked) {
+        launch();
+      }
+    });
+    bootstrapAnswer.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const unlocked = await bootstrapSession();
+        if (unlocked) {
+          launch();
+        }
+      }
+    });
     replayBtn.addEventListener("click", () => {
       state.animating = true;
       state.animationStart = 0;
@@ -2595,73 +2928,398 @@ HTML_PAGE = """<!DOCTYPE html>
         recompute();
       });
     });
-    window.addEventListener("resize", redrawDisplay);
+    window.addEventListener("resize", () => {
+      redrawDisplay();
+    });
 
     renderGunLibrary();
     hideGunHover();
     setControlsCollapsed(false);
     updateScaleButtons();
     updateShapeControls();
+    updateBootstrapGate();
     syncControls(defaults);
     applyGunMode();
-    recompute();
-    launch();
+    if (!bootstrapRequired()) {
+      launch();
+    }
   </script>
 </body>
 </html>
 """
 
 
-class SimulatorHandler(BaseHTTPRequestHandler):
-    def _send_asset(self) -> bool:
-        if not self.path.startswith("/assets/"):
-            return False
+def _wsgi_response(
+    start_response,
+    status: str,
+    body: bytes,
+    content_type: str,
+    extra_headers: list[tuple[str, str]] | None = None,
+    head_only: bool = False,
+):
+    headers = [
+        ("Content-Type", content_type),
+        ("Content-Length", str(len(body))),
+        ("X-Content-Type-Options", "nosniff"),
+        ("Referrer-Policy", "no-referrer"),
+        ("Cross-Origin-Resource-Policy", "same-origin"),
+        ("Cross-Origin-Opener-Policy", "same-origin"),
+        ("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
+    ]
+    if extra_headers:
+        headers.extend(extra_headers)
+    start_response(status, headers)
+    return [] if head_only else [body]
 
-        relative = self.path.removeprefix("/assets/")
+
+def configured_api_key() -> str | None:
+    value = os.environ.get(API_KEY_ENV_VAR, "").strip()
+    return value or None
+
+
+def configured_session_secret() -> str:
+    value = os.environ.get(SESSION_SECRET_ENV_VAR, "").strip()
+    if value:
+        return value
+    api_key = configured_api_key()
+    if api_key:
+        return api_key
+    return LOCAL_DEVELOPMENT_SESSION_SECRET
+
+
+def configured_allowed_origins() -> set[str]:
+    raw = os.environ.get(ALLOWED_ORIGINS_ENV_VAR, "")
+    return {origin.strip() for origin in raw.split(",") if origin.strip()}
+
+
+def is_request_authorized(environ) -> bool:
+    expected = configured_api_key()
+    if expected is None:
+        return False
+    return hmac.compare_digest(environ.get("HTTP_X_API_KEY", ""), expected)
+
+
+def is_origin_allowed(environ) -> bool:
+    allowed = configured_allowed_origins()
+    if not allowed:
+        return True
+    origin = environ.get("HTTP_ORIGIN", "")
+    if not origin:
+        return True
+    return origin in allowed
+
+
+def public_mode_enabled() -> bool:
+    return os.environ.get(PUBLIC_MODE_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+_runtime_warning_flags = {
+    "missing_allowed_origins": False,
+}
+
+
+def runtime_configuration_error() -> str | None:
+    if public_mode_enabled() and configured_api_key() is None:
+        return f"{API_KEY_ENV_VAR} must be set when {PUBLIC_MODE_ENV_VAR}=1."
+    if public_mode_enabled() and not os.environ.get(SESSION_SECRET_ENV_VAR, "").strip():
+        return f"{SESSION_SECRET_ENV_VAR} must be set when {PUBLIC_MODE_ENV_VAR}=1."
+    if public_mode_enabled() and not configured_allowed_origins():
+        return f"{ALLOWED_ORIGINS_ENV_VAR} must be set when {PUBLIC_MODE_ENV_VAR}=1."
+    return None
+
+
+def emit_runtime_warnings() -> None:
+    if public_mode_enabled() and not configured_allowed_origins() and not _runtime_warning_flags["missing_allowed_origins"]:
+        print(f"[ballistics] warning: {ALLOWED_ORIGINS_ENV_VAR} is unset while {PUBLIC_MODE_ENV_VAR}=1; Origin checks are disabled")
+        _runtime_warning_flags["missing_allowed_origins"] = True
+
+
+def log_simulation_request(environ, status: str) -> None:
+    remote_addr = environ.get("HTTP_X_FORWARDED_FOR", environ.get("REMOTE_ADDR", "-"))
+    origin = environ.get("HTTP_ORIGIN", "-")
+    print(f"[ballistics] {environ.get('REQUEST_METHOD', 'POST')} {environ.get('PATH_INFO', '')} {status} remote={remote_addr} origin={origin}")
+
+
+def parse_request_cookies(environ) -> SimpleCookie[str]:
+    cookie = SimpleCookie()
+    raw_cookie = environ.get("HTTP_COOKIE", "")
+    if raw_cookie:
+        cookie.load(raw_cookie)
+    return cookie
+
+
+def current_session_id(environ) -> str | None:
+    cookies = parse_request_cookies(environ)
+    morsel = cookies.get(SESSION_COOKIE_NAME)
+    if morsel is None:
+        return None
+    return morsel.value
+
+
+def csrf_token_for_session(session_id: str) -> str:
+    return hmac.new(configured_session_secret().encode("utf-8"), session_id.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def new_session_id() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def session_cookie_header(session_id: str) -> tuple[str, str]:
+    cookie = SimpleCookie()
+    cookie[SESSION_COOKIE_NAME] = session_id
+    cookie[SESSION_COOKIE_NAME]["path"] = "/"
+    cookie[SESSION_COOKIE_NAME]["httponly"] = True
+    cookie[SESSION_COOKIE_NAME]["samesite"] = "Lax"
+    if public_mode_enabled():
+        cookie[SESSION_COOKIE_NAME]["secure"] = True
+    return ("Set-Cookie", cookie.output(header="").strip())
+
+
+def sign_payload(payload: Dict[str, object]) -> str:
+    encoded_payload = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
+    signature = hmac.new(configured_session_secret().encode("utf-8"), encoded_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{encoded_payload}.{signature}"
+
+
+def verify_signed_payload(token: str) -> Dict[str, object] | None:
+    try:
+        encoded_payload, signature = token.rsplit(".", 1)
+    except ValueError:
+        return None
+    expected = hmac.new(configured_session_secret().encode("utf-8"), encoded_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(encoded_payload.encode("ascii")))
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def generate_bootstrap_challenge() -> Dict[str, str]:
+    challenge_id = secrets.randbelow(3)
+    if challenge_id == 0:
+        challenge = {
+            "kind": "vacuum_max_range_angle",
+            "prompt": "Ignoring drag, what launch angle gives maximum range in vacuum? Answer in degrees.",
+        }
+    elif challenge_id == 1:
+        base_angle = 20 + (5 * secrets.randbelow(6))
+        challenge = {
+            "kind": "complementary_angle",
+            "prompt": f"In vacuum, what complementary launch angle has the same range as {base_angle} degrees?",
+            "baseAngle": base_angle,
+        }
+    else:
+        speed = 10 + (5 * secrets.randbelow(5))
+        challenge = {
+            "kind": "vertical_flight_time",
+            "prompt": f"Ignoring drag, if a projectile is launched straight up at {speed} m/s, what is the total flight time in seconds? Round to one decimal place.",
+            "speed": speed,
+        }
+    challenge["issuedAt"] = int(time.time())
+    challenge["token"] = sign_payload(challenge)
+    return challenge
+
+
+def challenge_answer_is_correct(challenge: Dict[str, object], answer: str) -> bool:
+    normalized = answer.strip().lower()
+    if not normalized:
+        return False
+    kind = challenge.get("kind")
+    if kind == "vacuum_max_range_angle":
+        try:
+            return abs(float(normalized) - 45.0) <= 0.5
+        except ValueError:
+            return normalized in {"45", "45.0", "45 degrees"}
+    if kind == "complementary_angle":
+        try:
+            expected = 90.0 - float(challenge.get("baseAngle", 0))
+            return abs(float(normalized) - expected) <= 0.5
+        except ValueError:
+            return False
+    if kind == "vertical_flight_time":
+        try:
+            speed = float(challenge.get("speed", 0))
+            expected = round((2.0 * speed) / G, 1)
+            return abs(float(normalized) - expected) <= 0.15
+        except ValueError:
+            return False
+    return False
+
+
+def browser_session_authorized(environ) -> bool:
+    session_id = current_session_id(environ)
+    if not session_id:
+        return False
+    origin = environ.get("HTTP_ORIGIN", "")
+    if configured_allowed_origins() and origin not in configured_allowed_origins():
+        return False
+    provided_csrf = environ.get("HTTP_X_CSRF_TOKEN", "")
+    if not provided_csrf:
+        return False
+    expected_csrf = csrf_token_for_session(session_id)
+    return hmac.compare_digest(provided_csrf, expected_csrf)
+
+
+def render_index_page(session_id: str | None, bootstrap_challenge: Dict[str, object] | None) -> bytes:
+    csrf_token = csrf_token_for_session(session_id) if session_id else ""
+    challenge_json = json.dumps(bootstrap_challenge or {"required": False}, separators=(",", ":"))
+    return (
+        HTML_PAGE
+        .replace("__CSRF_TOKEN__", csrf_token)
+        .replace("__BOOTSTRAP_CHALLENGE__", challenge_json)
+    ).encode("utf-8")
+
+
+def application(environ, start_response):
+    method = environ.get("REQUEST_METHOD", "GET").upper()
+    path = environ.get("PATH_INFO", "/")
+    head_only = method == "HEAD"
+    config_error = runtime_configuration_error()
+    if config_error is not None:
+        return _wsgi_response(
+            start_response,
+            "503 Service Unavailable",
+            json.dumps({"error": config_error}).encode("utf-8"),
+            "application/json; charset=utf-8",
+        )
+    emit_runtime_warnings()
+
+    if path.startswith("/assets/") and method in {"GET", "HEAD"}:
+        relative = path.removeprefix("/assets/")
         asset_path = (ASSETS_DIR / relative).resolve()
-        if not str(asset_path).startswith(str(ASSETS_DIR.resolve())) or not asset_path.is_file():
-            self.send_error(404, "Not Found")
-            return True
+        if not asset_path.is_relative_to(RESOLVED_ASSETS_DIR) or not asset_path.is_file():
+            return _wsgi_response(start_response, "404 Not Found", b"Not Found", "text/plain; charset=utf-8", head_only=head_only)
 
         content_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
-        content = asset_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(content)
-        return True
+        return _wsgi_response(
+            start_response,
+            "200 OK",
+            asset_path.read_bytes(),
+            content_type,
+            extra_headers=[("Cache-Control", "public, max-age=31536000, immutable")],
+            head_only=head_only,
+        )
 
-    def _send_index_headers(self) -> bytes | None:
-        if self.path not in ("/", "/index.html"):
-            self.send_error(404, "Not Found")
-            return None
+    if path in {"/", "/index.html"} and method in {"GET", "HEAD"}:
+        session_id = current_session_id(environ)
+        bootstrap_challenge = None
+        extra_headers = None
+        if session_id is None:
+            bootstrap_challenge = generate_bootstrap_challenge()
+            bootstrap_challenge["required"] = True
+        else:
+            extra_headers = [session_cookie_header(session_id)]
+        return _wsgi_response(
+            start_response,
+            "200 OK",
+            render_index_page(session_id, bootstrap_challenge),
+            "text/html; charset=utf-8",
+            extra_headers=extra_headers,
+            head_only=head_only,
+        )
 
-        content = HTML_PAGE.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(content)))
-        self.end_headers()
-        return content
+    if path == "/session/bootstrap" and method == "POST":
+        if not is_origin_allowed(environ):
+            return _wsgi_response(
+                start_response,
+                "403 Forbidden",
+                json.dumps({"error": "Origin not allowed."}).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
+        try:
+            length = int(environ.get("CONTENT_LENGTH", "0") or "0")
+        except ValueError:
+            return _wsgi_response(
+                start_response,
+                "400 Bad Request",
+                json.dumps({"error": "Invalid Content-Length."}).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
+        if length < 0 or length > MAX_REQUEST_BODY_BYTES:
+            return _wsgi_response(
+                start_response,
+                "400 Bad Request" if length < 0 else "413 Payload Too Large",
+                json.dumps({"error": "Request body too large." if length > MAX_REQUEST_BODY_BYTES else "Invalid Content-Length."}).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
+        try:
+            payload = json.loads(environ["wsgi.input"].read(length) if length > 0 else b"{}")
+            if not isinstance(payload, dict):
+                raise ValueError("Bootstrap payload must be a JSON object.")
+            challenge_token = str(payload.get("token", ""))
+            answer = str(payload.get("answer", ""))
+            challenge = verify_signed_payload(challenge_token)
+            if challenge is None:
+                raise ValueError("Challenge token is invalid.")
+            issued_at = int(challenge.get("issuedAt", 0))
+            if time.time() - issued_at > BOOTSTRAP_CHALLENGE_TTL_SECONDS:
+                raise ValueError("Challenge expired.")
+            if not challenge_answer_is_correct(challenge, answer):
+                return _wsgi_response(
+                    start_response,
+                    "403 Forbidden",
+                    json.dumps({"error": "Incorrect answer."}).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
+            session_id = new_session_id()
+            return _wsgi_response(
+                start_response,
+                "200 OK",
+                json.dumps({"csrfToken": csrf_token_for_session(session_id)}).encode("utf-8"),
+                "application/json; charset=utf-8",
+                extra_headers=[session_cookie_header(session_id)],
+            )
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            return _wsgi_response(
+                start_response,
+                "400 Bad Request",
+                json.dumps({"error": str(exc)}).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
 
-    def do_HEAD(self) -> None:
-        if self._send_asset():
-            return
-        self._send_index_headers()
+    if path == "/api/simulate" and method == "POST":
+        if not (is_request_authorized(environ) or browser_session_authorized(environ)):
+            status = "401 Unauthorized"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, json.dumps({"error": "Unauthorized."}).encode("utf-8"), "application/json; charset=utf-8")
+        if not is_origin_allowed(environ):
+            status = "403 Forbidden"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, json.dumps({"error": "Origin not allowed."}).encode("utf-8"), "application/json; charset=utf-8")
+        try:
+            length = int(environ.get("CONTENT_LENGTH", "0") or "0")
+        except ValueError:
+            status = "400 Bad Request"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, json.dumps({"error": "Invalid Content-Length."}).encode("utf-8"), "application/json; charset=utf-8")
+        if length < 0:
+            status = "400 Bad Request"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, json.dumps({"error": "Invalid Content-Length."}).encode("utf-8"), "application/json; charset=utf-8")
+        if length > MAX_REQUEST_BODY_BYTES:
+            status = "413 Payload Too Large"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, json.dumps({"error": "Request body too large."}).encode("utf-8"), "application/json; charset=utf-8")
 
-    def do_GET(self) -> None:
-        if self._send_asset():
-            return
-        content = self._send_index_headers()
-        if content is None:
-            return
-        self.wfile.write(content)
+        try:
+            raw_body = environ["wsgi.input"].read(length) if length > 0 else b"{}"
+            payload = json.loads(raw_body)
+            if not isinstance(payload, dict):
+                raise ValueError("Simulation payload must be a JSON object.")
+            response_body = json.dumps(simulation_response(payload)).encode("utf-8")
+            status = "200 OK"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, response_body, "application/json; charset=utf-8")
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            status = "400 Bad Request"
+            log_simulation_request(environ, status)
+            return _wsgi_response(start_response, status, json.dumps({"error": str(exc)}).encode("utf-8"), "application/json; charset=utf-8")
 
-    def log_message(self, format: str, *args) -> None:  # noqa: A003
-        escaped = html.escape(format % args)
-        print(f"[ballistics] {escaped}")
+    return _wsgi_response(start_response, "404 Not Found", b"Not Found", "text/plain; charset=utf-8", head_only=head_only)
 
 
 def parse_args() -> argparse.Namespace:
@@ -2673,7 +3331,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    with ThreadingHTTPServer((args.host, args.port), SimulatorHandler) as server:
+    with make_server(args.host, args.port, application) as server:
         print(f"Serving ballistics simulator at http://{args.host}:{args.port}")
         server.serve_forever()
 
