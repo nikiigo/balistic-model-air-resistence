@@ -42,6 +42,7 @@ Material density also has quick shortcuts:
 
 ## Historical Launcher Library
 
+<!--suppress GrazieInspection -->
 The left-side historic launcher library includes siege engines and artillery pieces with images, descriptive notes, and preset parameters. Selecting a launcher applies its documented or inferred ballistic profile and switches the graph to a stable scale for that launcher.
 
 Included presets cover:
@@ -67,6 +68,7 @@ The historical presets are educational approximations. Some launchers lack direc
 
 ## Physics Model
 
+<!--suppress GrazieInspection -->
 The drag equation keeps the standard form:
 
 `Fd = 0.5 * rho * Cd * A * v^2`
@@ -372,4 +374,5 @@ Useful manual checks:
 
 ## Author
 
+<!--suppress GrazieInspection -->
 Igor Nikitin

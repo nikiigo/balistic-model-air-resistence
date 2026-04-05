@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, cast, TypedDict
+from typing import Any, Mapping, TypedDict
 
 from ballistics.constants import (
     DEFAULT_SHELL_BALLISTIC_COEFFICIENT,
@@ -28,7 +28,7 @@ from ballistics.constants import (
     MIN_VOLUME_FACTOR,
 )
 from ballistics.physics.drag import DragSimulationResult, simulate_drag_reference
-from ballistics.physics.ideal import simulate_ideal_reference
+from ballistics.physics.ideal import IdealSimulationParams, simulate_ideal_reference
 from ballistics.presets import DEFAULT_SIMULATION_PARAMS, HISTORICAL_PLOT_REFERENCE_PARAMS, REFERENCE_PRESETS
 
 
@@ -52,12 +52,7 @@ class PlotBounds(TypedDict):
     maxY: float
 
 
-class SerializedDragPoint(TypedDict):
-    x: float
-    y: float
-    t: float
-    vx: float
-    vy: float
+class SerializedAeroPoint(TypedDict):
     airDensity: float
     viscosity: float
     speedOfSound: float
@@ -67,6 +62,14 @@ class SerializedDragPoint(TypedDict):
     baseDragCoefficient: float
     dragCoefficient: float
     dragForce: float
+
+
+class SerializedDragPoint(SerializedAeroPoint):
+    x: float
+    y: float
+    t: float
+    vx: float
+    vy: float
 
 
 class SerializedDragResult(TypedDict):
@@ -100,12 +103,53 @@ def clamp(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
 
 
+def _simulation_params_from_mapping(mapping: Mapping[str, object]) -> SimulationParams:
+    return {
+        "angle": _coerce_payload_float("angle", mapping["angle"]),
+        "speed": _coerce_payload_float("speed", mapping["speed"]),
+        "materialDensity": _coerce_payload_float("materialDensity", mapping["materialDensity"]),
+        "temperature": _coerce_payload_float("temperature", mapping["temperature"]),
+        "pressure": _coerce_payload_float("pressure", mapping["pressure"]),
+        "diameter": _coerce_payload_float("diameter", mapping["diameter"]),
+        "dt": _coerce_payload_float("dt", mapping["dt"]),
+        "projectileShape": str(mapping.get("projectileShape", "sphere")),
+        "sphericity": _coerce_payload_float("sphericity", mapping.get("sphericity", 1.0)),
+        "volumeFactor": _coerce_payload_float("volumeFactor", mapping.get("volumeFactor", 1.0)),
+        "dragModel": str(mapping.get("dragModel", DEFAULT_SHELL_DRAG_MODEL)),
+        "ballisticCoefficient": _coerce_payload_float("ballisticCoefficient", mapping.get("ballisticCoefficient", 0.0)),
+    }
+
+
+def _ideal_params(params: SimulationParams) -> IdealSimulationParams:
+    return {
+        "angle": params["angle"],
+        "speed": params["speed"],
+        "dt": params["dt"],
+    }
+
+
+def _with_angle(params: SimulationParams, angle: float) -> SimulationParams:
+    updated: dict[str, object] = dict(params)
+    updated["angle"] = angle
+    return _simulation_params_from_mapping(updated)
+
+
+def _coerce_payload_float(field: str, value: object) -> float:
+    if isinstance(value, (int, float, str, bytes, bytearray)):
+        candidate = float(value)
+    else:
+        raise ValueError(f"{field} must be numeric.")
+    if not math.isfinite(candidate):
+        raise ValueError(f"{field} must be finite.")
+    return candidate
+
+
 def _bounds_from_angles(params: SimulationParams, sampled_angles: list[float], x_scale: float, y_scale: float) -> PlotBounds:
     max_x = 1.0
     max_y = 1.0
     for angle in sampled_angles:
-        sample_params = SimulationParams({**params, "angle": angle})
-        ideal = simulate_ideal_reference(sample_params)
+        sample_params = _with_angle(params, angle)
+        ideal = simulate_ideal_reference(_ideal_params(sample_params))
         drag = simulate_drag_reference(sample_params)
         max_x = max(max_x, ideal["metrics"]["range"], drag["metrics"]["range"])
         max_y = max(max_y, ideal["metrics"]["maxHeight"], drag["metrics"]["max_height"])
@@ -177,25 +221,21 @@ def serialize_drag_result(result: DragSimulationResult) -> SerializedDragResult:
 
 
 PLOT_REFERENCE_SCENARIOS: list[SimulationParams] = [
-    cast(SimulationParams, cast(object, DEFAULT_SIMULATION_PARAMS)),
-    *[cast(SimulationParams, cast(object, value)) for value in REFERENCE_PRESETS.values()],
-    *[cast(SimulationParams, cast(object, value)) for value in HISTORICAL_PLOT_REFERENCE_PARAMS.values()],
-    cast(SimulationParams, cast(object, {**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM})),
-    cast(SimulationParams, cast(object, {**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM})),
-    cast(
-        SimulationParams,
-        cast(
-            object,
-            {
-                **DEFAULT_SIMULATION_PARAMS,
-                "angle": 45.0,
-                "speed": 440.0,
-                "materialDensity": 12000.0,
-                "temperature": -10.0,
-                "pressure": 1.2,
-                "diameter": 0.01,
-            },
-        ),
+    _simulation_params_from_mapping(DEFAULT_SIMULATION_PARAMS),
+    *[_simulation_params_from_mapping(value) for value in REFERENCE_PRESETS.values()],
+    *[_simulation_params_from_mapping(value) for value in HISTORICAL_PLOT_REFERENCE_PARAMS.values()],
+    _simulation_params_from_mapping({**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM}),
+    _simulation_params_from_mapping({**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM}),
+    _simulation_params_from_mapping(
+        {
+            **DEFAULT_SIMULATION_PARAMS,
+            "angle": 45.0,
+            "speed": 440.0,
+            "materialDensity": 12000.0,
+            "temperature": -10.0,
+            "pressure": 1.2,
+            "diameter": 0.01,
+        }
     ),
 ]
 
@@ -220,10 +260,7 @@ def normalize_simulation_params(payload: dict[str, object]) -> SimulationParams:
     raw_params = dict(DEFAULT_SIMULATION_PARAMS)
     for field in NUMERIC_PARAM_FIELDS:
         if field in payload:
-            candidate = float(cast(object, payload[field]))
-            if not math.isfinite(candidate):
-                raise ValueError(f"{field} must be finite.")
-            raw_params[field] = candidate
+            raw_params[field] = _coerce_payload_float(field, payload[field])
 
     projectile_shape = str(payload.get("projectileShape", raw_params["projectileShape"]))
     normalized_shape = "shell" if projectile_shape == "shell" else "sphere"
@@ -274,7 +311,7 @@ def normalize_simulation_params(payload: dict[str, object]) -> SimulationParams:
 def simulation_response(payload: dict[str, object]) -> SimulationResponse:
     params = normalize_simulation_params(payload)
     current_gun = payload.get("currentGun")
-    ideal = simulate_ideal_reference(params)
+    ideal = simulate_ideal_reference(_ideal_params(params))
     drag = serialize_drag_result(simulate_drag_reference(params))
     focused_bounds = compute_focused_plot_bounds(params)
     stable_bounds = HISTORICAL_GUN_PLOT_BOUNDS.get(str(current_gun), FIXED_PLOT_BOUNDS)
