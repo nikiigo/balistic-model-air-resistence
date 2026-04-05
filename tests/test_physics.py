@@ -1,5 +1,6 @@
 import math
 import unittest
+from typing import cast
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -151,7 +152,8 @@ class AerodynamicHelpersTests(unittest.TestCase):
 
 
 class DragSimulationRegressionTests(unittest.TestCase):
-    def base_params(self) -> dict[str, float]:
+    @staticmethod
+    def base_params() -> dict[str, float]:
         return {
             "angle": 35.0,
             "speed": 120.0,
@@ -163,8 +165,8 @@ class DragSimulationRegressionTests(unittest.TestCase):
         }
 
     def test_pressure_below_supported_floor_clamps_to_minimum(self) -> None:
-        clamped = simulate_drag_reference({**self.base_params(), "pressure": 0.0})
-        minimum = simulate_drag_reference({**self.base_params(), "pressure": MIN_PRESSURE_ATM})
+        clamped = simulate_drag_reference(cast(dict[str, float], {**self.base_params(), "pressure": 0.0}))
+        minimum = simulate_drag_reference(cast(dict[str, float], {**self.base_params(), "pressure": MIN_PRESSURE_ATM}))
         self.assertAlmostEqual(clamped["metrics"]["range"], minimum["metrics"]["range"], places=9)
         self.assertAlmostEqual(clamped["aero"]["launch_drag_force"], minimum["aero"]["launch_drag_force"], places=9)
 

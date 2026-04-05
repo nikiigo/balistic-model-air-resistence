@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import TypedDict
+from typing import Any, cast, TypedDict
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -101,6 +101,50 @@ class AccelerationState(TypedDict):
     ax: float
     ay: float
     aero: AeroState
+
+
+class PeakPoint(TypedDict):
+    x: float
+    y: float
+
+
+class TrajectoryPoint(AeroState):
+    x: float
+    y: float
+    t: float
+    vx: float
+    vy: float
+
+
+class DragMetrics(TypedDict):
+    range: float
+    max_height: float
+    flight_time: float
+    final_speed: float
+    peak: PeakPoint
+
+
+class DragSummary(TypedDict):
+    projectile_mass: float
+    projectile_shape: str
+    sphericity: float
+    drag_model: str
+    ballistic_coefficient: float
+    air_density: float
+    viscosity: float
+    area: float
+    launch_reynolds: float
+    launch_drag_coefficient: float
+    launch_drag_force: float
+    impact_reynolds: float
+    impact_drag_coefficient: float
+    impact_drag_force: float
+
+
+class DragSimulationResult(TypedDict):
+    points: list[TrajectoryPoint]
+    metrics: DragMetrics
+    aero: DragSummary
 
 
 def kelvin_from_celsius(temperature_c: float) -> float:
@@ -253,13 +297,12 @@ def _sphere_aerodynamic_state(base_state: AeroState, speed: float) -> AeroState:
     base_drag_coefficient = drag_coefficient_sphere(base_state["reynolds"])
     drag_coefficient = base_drag_coefficient * compressibility_drag_multiplier(base_state["mach"])
     drag_force = 0.5 * base_state["air_density"] * drag_coefficient * base_state["area"] * speed * speed
-    return {
-        **base_state,
-        "base_drag_coefficient": base_drag_coefficient,
-        "drag_coefficient": drag_coefficient,
-        "drag_force": drag_force,
-        "ballistic_coefficient": 0.0,
-    }
+    result = dict(base_state)
+    result["base_drag_coefficient"] = base_drag_coefficient
+    result["drag_coefficient"] = drag_coefficient
+    result["drag_force"] = drag_force
+    result["ballistic_coefficient"] = 0.0
+    return cast(AeroState, result)
 
 
 def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mass: float) -> AeroState:
@@ -281,13 +324,12 @@ def _shell_aerodynamic_state(base_state: AeroState, speed: float, projectile_mas
         )
     else:
         drag_coefficient = 0.0
-    return {
-        **base_state,
-        "base_drag_coefficient": drag_coefficient,
-        "drag_coefficient": drag_coefficient,
-        "drag_force": drag_force,
-        "ballistic_coefficient": effective_ballistic_coefficient,
-    }
+    result = dict(base_state)
+    result["base_drag_coefficient"] = drag_coefficient
+    result["drag_coefficient"] = drag_coefficient
+    result["drag_force"] = drag_force
+    result["ballistic_coefficient"] = effective_ballistic_coefficient
+    return cast(AeroState, result)
 
 
 def aerodynamic_state(
@@ -327,7 +369,7 @@ def drag_acceleration(
     sphericity: float,
     drag_model: str,
     ballistic_coefficient: float,
-) -> Dict[str, float]:
+) -> AccelerationState:
     speed = math.hypot(vx, vy)
     aero = aerodynamic_state(
         speed,
@@ -348,7 +390,34 @@ def drag_acceleration(
     }
 
 
-def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) -> Dict[str, object]:
+def _build_drag_summary(
+    projectile_mass: float,
+    projectile_shape: str,
+    sphericity: float,
+    drag_model: str,
+    ballistic_coefficient: float,
+    launch_aero: AeroState,
+    impact_aero: AeroState,
+) -> DragSummary:
+    return {
+        "projectile_mass": projectile_mass,
+        "projectile_shape": projectile_shape,
+        "sphericity": sphericity,
+        "drag_model": drag_model,
+        "ballistic_coefficient": ballistic_coefficient,
+        "air_density": impact_aero["air_density"],
+        "viscosity": impact_aero["viscosity"],
+        "area": impact_aero["area"],
+        "launch_reynolds": launch_aero["reynolds"],
+        "launch_drag_coefficient": launch_aero["drag_coefficient"],
+        "launch_drag_force": launch_aero["drag_force"],
+        "impact_reynolds": impact_aero["reynolds"],
+        "impact_drag_coefficient": impact_aero["drag_coefficient"],
+        "impact_drag_force": impact_aero["drag_force"],
+    }
+
+
+def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> DragSimulationResult:
     theta = math.radians(params["angle"])
     x = 0.0
     y = 0.0
@@ -372,10 +441,11 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) ->
         drag_model=drag_model,
         ballistic_coefficient=ballistic_coefficient,
     )
-    points = [{"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero}]
+    initial_point = cast(TrajectoryPoint, {"x": x, "y": y, "t": 0.0, "vx": vx, "vy": vy, **aero})
+    points: list[TrajectoryPoint] = [initial_point]
     t = 0.0
     max_height = 0.0
-    peak = {"x": 0.0, "y": 0.0}
+    peak: PeakPoint = {"x": 0.0, "y": 0.0}
 
     for _ in range(max_steps):
         k1 = drag_acceleration(
@@ -466,7 +536,11 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) ->
                 drag_model=drag_model,
                 ballistic_coefficient=ballistic_coefficient,
             )
-            points.append({"x": impact_x, "y": 0.0, "t": impact_t, "vx": impact_vx, "vy": impact_vy, **impact_aero})
+            impact_point = cast(
+                TrajectoryPoint,
+                {"x": impact_x, "y": 0.0, "t": impact_t, "vx": impact_vx, "vy": impact_vy, **impact_aero},
+            )
+            points.append(impact_point)
             return {
                 "points": points,
                 "metrics": {
@@ -476,25 +550,19 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) ->
                     "final_speed": math.hypot(impact_vx, impact_vy),
                     "peak": peak,
                 },
-                "aero": {
-                    "projectile_mass": projectile_mass,
-                    "projectile_shape": projectile_shape,
-                    "sphericity": sphericity,
-                    "drag_model": drag_model,
-                    "ballistic_coefficient": ballistic_coefficient,
-                    "air_density": impact_aero["air_density"],
-                    "viscosity": impact_aero["viscosity"],
-                    "area": impact_aero["area"],
-                    "launch_reynolds": points[0]["reynolds"],
-                    "launch_drag_coefficient": points[0]["drag_coefficient"],
-                    "launch_drag_force": points[0]["drag_force"],
-                    "impact_reynolds": impact_aero["reynolds"],
-                    "impact_drag_coefficient": impact_aero["drag_coefficient"],
-                    "impact_drag_force": impact_aero["drag_force"],
-                },
+                "aero": _build_drag_summary(
+                    projectile_mass,
+                    projectile_shape,
+                    sphericity,
+                    drag_model,
+                    ballistic_coefficient,
+                    points[0],
+                    impact_aero,
+                ),
             }
 
-        points.append({"x": x, "y": y, "t": t, "vx": vx, "vy": vy, **aero})
+        next_point = cast(TrajectoryPoint, {"x": x, "y": y, "t": t, "vx": vx, "vy": vy, **aero})
+        points.append(next_point)
 
     return {
         "points": points,
@@ -505,20 +573,13 @@ def simulate_drag_reference(params: Dict[str, float], max_steps: int = 25000) ->
             "final_speed": math.hypot(vx, vy),
             "peak": peak,
         },
-        "aero": {
-            "projectile_mass": projectile_mass,
-            "projectile_shape": projectile_shape,
-            "sphericity": sphericity,
-            "drag_model": drag_model,
-            "ballistic_coefficient": ballistic_coefficient,
-            "air_density": aero["air_density"],
-            "viscosity": aero["viscosity"],
-            "area": aero["area"],
-            "launch_reynolds": points[0]["reynolds"],
-            "launch_drag_coefficient": points[0]["drag_coefficient"],
-            "launch_drag_force": points[0]["drag_force"],
-            "impact_reynolds": aero["reynolds"],
-            "impact_drag_coefficient": aero["drag_coefficient"],
-            "impact_drag_force": aero["drag_force"],
-        },
+        "aero": _build_drag_summary(
+            projectile_mass,
+            projectile_shape,
+            sphericity,
+            drag_model,
+            ballistic_coefficient,
+            points[0],
+            aero,
+        ),
     }
