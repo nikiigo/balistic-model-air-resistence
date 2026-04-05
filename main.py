@@ -67,7 +67,6 @@ from ballistics.physics.drag import (
     projectile_volume_from_diameter,
     reynolds_number,
     simulate_drag_reference,
-    sphere_drag_coefficient_from_source_mach,
     speed_of_sound_air,
     sphere_area_from_diameter,
     sphere_volume_from_diameter,

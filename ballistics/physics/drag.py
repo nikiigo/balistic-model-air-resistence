@@ -18,29 +18,6 @@ from ballistics.constants import (
 STANDARD_AIR_DENSITY = 1.225
 FPS_TO_MPS = 0.3048
 MPS_TO_FPS = 1.0 / FPS_TO_MPS
-SPHERE_SOURCE_REFERENCE_MACH = 0.6
-
-# Approximate sphere Cd(M) points inferred from NASA-TM-109016 figures 2 and 14.
-# Figure 2 covers the transonic range for the sphere at R=3.0 million/ft and
-# Figure 14 extends the sphere drag trend through the supersonic range. These
-# values are digitized approximations from the plotted sphere curve, not a
-# machine-readable table published in the report.
-SPHERE_MACH_DRAG_TABLE = (
-    (0.60, 0.20),
-    (0.70, 0.30),
-    (0.80, 0.50),
-    (0.90, 0.72),
-    (0.95, 0.80),
-    (1.00, 0.92),
-    (1.10, 1.05),
-    (1.20, 1.10),
-    (1.50, 1.02),
-    (1.90, 0.99),
-    (2.40, 0.95),
-    (3.00, 0.92),
-    (4.00, 0.90),
-    (4.80, 0.88),
-)
 
 G1_DRAG_TABLE = (
     (4230.0, 1.477404177730177e-04, 1.9565),
@@ -147,26 +124,15 @@ def reynolds_number(density: float, speed: float, diameter: float, viscosity: fl
     return density * speed * diameter / viscosity
 
 
-def linear_interpolate(value: float, edge0: float, edge1: float, start: float, end: float) -> float:
-    if edge1 <= edge0:
-        return start
-    ratio = max(0.0, min(1.0, (value - edge0) / (edge1 - edge0)))
-    return start + ((end - start) * ratio)
-
-
 def drag_coefficient_sphere(reynolds: float) -> float:
     if reynolds <= 0:
         return 0.0
-    if reynolds <= 1_000_000.0:
-        re_over_5 = reynolds / 5.0
-        re_over_263k = reynolds / 263000.0
-        return (
-            (24.0 / reynolds)
-            + (2.6 * re_over_5 / (1.0 + (re_over_5 ** 1.52)))
-            + (0.411 * (re_over_263k ** -7.94) / (1.0 + (re_over_263k ** -8.0)))
-            + ((reynolds ** 0.8) / 461000.0)
-        )
-    return 0.2
+    phi = 1.0
+    a = math.exp(2.3288 - (6.4581 * phi) + (2.4486 * phi * phi))
+    b = 0.0964 + (0.5565 * phi)
+    c = math.exp(4.9050 - (13.8944 * phi) + (18.4222 * phi**2) - (10.2599 * phi**3))
+    d = math.exp(1.4681 + (12.2584 * phi) - (20.7322 * phi**2) + (15.8855 * phi**3))
+    return (24.0 / reynolds) * (1.0 + a * (reynolds**b)) + ((c * reynolds) / (d + reynolds))
 
 
 def sphere_area_from_diameter(diameter: float) -> float:
@@ -219,24 +185,10 @@ def ballistic_drag_acceleration(speed_mps: float, density: float, drag_model: st
     return standard_retardation_fps_s * density_ratio * FPS_TO_MPS
 
 
-def sphere_drag_coefficient_from_source_mach(mach: float) -> float:
-    if mach <= SPHERE_MACH_DRAG_TABLE[0][0]:
-        return SPHERE_MACH_DRAG_TABLE[0][1]
-    for index in range(1, len(SPHERE_MACH_DRAG_TABLE)):
-        lower_mach, lower_cd = SPHERE_MACH_DRAG_TABLE[index - 1]
-        upper_mach, upper_cd = SPHERE_MACH_DRAG_TABLE[index]
-        if mach <= upper_mach:
-            return linear_interpolate(mach, lower_mach, upper_mach, lower_cd, upper_cd)
-    return SPHERE_MACH_DRAG_TABLE[-1][1]
-
-
 def compressibility_drag_multiplier(mach: float) -> float:
-    if mach <= SPHERE_SOURCE_REFERENCE_MACH:
+    if mach <= 0:
         return 1.0
-    reference_cd = sphere_drag_coefficient_from_source_mach(SPHERE_SOURCE_REFERENCE_MACH)
-    if reference_cd <= 0:
-        return 1.0
-    return sphere_drag_coefficient_from_source_mach(mach) / reference_cd
+    return 1.0 + ((mach * mach) / 4.0) + ((mach**4) / 40.0)
 
 
 def aerodynamic_state(
