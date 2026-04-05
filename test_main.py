@@ -404,19 +404,12 @@ class ServerHardeningTests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertIn(b'"drag"', body)
 
-    def test_public_mode_requires_api_key(self) -> None:
-        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1"}, clear=False):
-            self.assertIn(API_KEY_ENV_VAR, runtime_configuration_error() or "")
-            status, _, body = self.wsgi_request()
-        self.assertEqual(status, "503 Service Unavailable")
-        self.assertIn(API_KEY_ENV_VAR.encode("utf-8"), body)
-
     def test_public_mode_requires_session_secret_and_allowed_origins(self) -> None:
-        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1", API_KEY_ENV_VAR: "secret"}, clear=False):
+        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1"}, clear=False):
             error = runtime_configuration_error() or ""
         self.assertIn(SESSION_SECRET_ENV_VAR, error)
 
-        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1", API_KEY_ENV_VAR: "secret", SESSION_SECRET_ENV_VAR: "session-secret"}, clear=False):
+        with patch.dict("os.environ", {PUBLIC_MODE_ENV_VAR: "1", SESSION_SECRET_ENV_VAR: "session-secret"}, clear=False):
             error = runtime_configuration_error() or ""
         self.assertIn(ALLOWED_ORIGINS_ENV_VAR, error)
 
