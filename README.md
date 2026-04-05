@@ -78,10 +78,29 @@ But the aerodynamic terms are derived dynamically:
 - speed of sound from the ideal-gas relation for air
 - Mach number from instantaneous projectile speed and local speed of sound
 - Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
-- base drag coefficient from a piecewise sphere `Cd(Re)` correlation for round shot and a bounded streamlined-shell form factor for elongated shell-like projectiles
-- an approximate Mach-aware compressibility multiplier applied on top of that base drag coefficient for high-speed flow, with a milder transonic rise for shell-like projectiles than for spheres
+- base drag coefficient from the Morrison sphere `Cd(Re)` correlation for round shot up to `Re = 1e6`, with a fixed high-Re fallback of `Cd = 0.2` above that
+- a source-based sphere Mach correction derived from approximate digitization of the sphere curve in NASA-TM-109016, figures 2 and 14
+- shell-like projectiles can use a standard drag-function plus ballistic-coefficient path (`G1` or `G7`), with the current historical shell presets using `G7`
 - projectile area from diameter
 - projectile mass from material density and a shape-aware projectile volume approximation
+
+In implementation terms, the two projectile families work differently:
+
+- round shot spheres: compute a base `Cd(Re)` from the Morrison correlation, then scale that base value with the source-based Mach correction
+- shell-like projectiles: compute drag directly from the standard `G1/G7` drag-function plus ballistic coefficient (`BC`)
+
+For shell-like projectiles, Reynolds number and Mach number are still reported as diagnostics, but they are not the primary inputs to the shell drag law. The displayed shell drag coefficient is an equivalent `Cd` derived afterward from the computed drag force:
+
+- `Cd_equivalent = 2 * Fd / (rho * A * v^2)`
+
+So for shells, the aerodynamic driver is the `G1/G7 + BC` model, not a direct `Cd(Re, Ma)` correlation.
+
+The shell drag-function shape is data-fitted through the standard `G1/G7` model, but the preset ballistic-coefficient values remain approximate tuning inputs rather than source-verified firing-table BCs for each historical round.
+
+For round-shot compressibility, the simulator now uses a sparse `Mach -> Cd` table inferred from the sphere plots in NASA-TM-109016 rather than the older hand-tuned multiplier coefficients. Those table values are approximate digitizations from the report figures, not an official machine-readable NASA table:
+
+- NASA-TM-109016, *Aerodynamics of a sphere and an oblate spheroid for Mach numbers from 0.6 to 10.5 including some effects of test conditions*  
+  https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19940008699.pdf
 
 The flight model is a 2D point-mass model in horizontal distance and height.
 
@@ -110,9 +129,10 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 
 - 2D planar point-mass motion only
 - round shot uses a spherical projectile model
-- shell presets use a simplified elongated-projectile drag model tuned to avoid the unrealistically large drag penalties produced by generic nonspherical particle correlations
+- shell presets now use a `G7` ballistic-coefficient model by default
+- the `G1/G7` drag-function shapes are standard fitted curves, but the preset ballistic-coefficient values are still approximate and not all tied to historical firing tables
 - pressure is clamped to a minimum supported value of `0.001 atm`
-- compressibility is handled with an approximate Mach-aware drag correction, not a fitted `Cd(Re, Ma)` table or a full transonic/supersonic aerodynamic model
+- sphere compressibility uses a sparse source-based Mach table inferred from NASA-TM-109016, not a full `Cd(Re, Ma)` surface
 - no wind
 - no spin or Magnus effect
 - no terrain modeling
@@ -316,7 +336,7 @@ Useful manual checks:
 
 - altitude-dependent atmosphere
 - sphere drag tables fitted directly over `Re` and `Ma`
-- better shell-specific aerodynamic data or ballistic-coefficient models
+- better historical ballistic-coefficient data for the shell presets
 - non-spherical projectiles
 - wind and turbulence
 - adaptive time stepping

@@ -10,7 +10,6 @@ from main import (
     aerodynamic_state,
     air_density_from_conditions,
     analytical_metrics,
-    drag_coefficient_nonspherical,
     drag_coefficient_sphere,
     dynamic_viscosity_air,
     kelvin_from_celsius,
@@ -22,6 +21,7 @@ from main import (
     reynolds_number,
     simulate_drag_reference,
     simulate_ideal_reference,
+    sphere_drag_coefficient_from_source_mach,
     speed_of_sound_air,
     sphere_area_from_diameter,
 )
@@ -77,21 +77,41 @@ class AerodynamicHelpersTests(unittest.TestCase):
         speed = speed_of_sound_air(15.0) * 0.75
         self.assertAlmostEqual(mach_number(speed, 15.0), 0.75, places=9)
 
+    def test_source_based_sphere_mach_table_interpolates_expected_values(self) -> None:
+        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(0.6), 0.20, places=9)
+        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(1.0), 0.92, places=9)
+        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(0.75), 0.40, places=9)
+        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(6.0), 0.88, places=9)
+
     def test_sphere_area_from_diameter(self) -> None:
         self.assertAlmostEqual(sphere_area_from_diameter(0.1), math.pi * 0.01 / 4.0, places=9)
 
     def test_drag_coefficient_piecewise_regimes(self) -> None:
-        self.assertAlmostEqual(drag_coefficient_sphere(0.05), 480.0, places=6)
-        transitional = drag_coefficient_sphere(100.0)
-        expected = (24.0 / 100.0) * (1.0 + 0.15 * (100.0 ** 0.687))
-        self.assertAlmostEqual(transitional, expected, places=9)
-        self.assertAlmostEqual(drag_coefficient_sphere(5000.0), 0.44, places=9)
+        reynolds = 100.0
+        re_over_5 = reynolds / 5.0
+        re_over_263k = reynolds / 263000.0
+        expected = (
+            (24.0 / reynolds)
+            + (2.6 * re_over_5 / (1.0 + (re_over_5 ** 1.52)))
+            + (0.411 * (re_over_263k ** -7.94) / (1.0 + (re_over_263k ** -8.0)))
+            + ((reynolds ** 0.8) / 461000.0)
+        )
+        self.assertAlmostEqual(drag_coefficient_sphere(reynolds), expected, places=9)
+        self.assertGreater(drag_coefficient_sphere(0.05), 100.0)
+        self.assertGreater(drag_coefficient_sphere(5000.0), 0.1)
 
-    def test_nonspherical_drag_correlation_differs_from_sphere(self) -> None:
-        shell_cd = drag_coefficient_nonspherical(5000.0, 0.65)
-        sphere_cd = drag_coefficient_sphere(5000.0)
-        self.assertGreater(shell_cd, 0.0)
-        self.assertNotAlmostEqual(shell_cd, sphere_cd, places=6)
+    def test_sphere_drag_uses_morrison_up_to_one_million_reynolds(self) -> None:
+        reynolds = 1_000_000.0
+        re_over_5 = reynolds / 5.0
+        re_over_263k = reynolds / 263000.0
+        expected = (
+            (24.0 / reynolds)
+            + (2.6 * re_over_5 / (1.0 + (re_over_5 ** 1.52)))
+            + (0.411 * (re_over_263k ** -7.94) / (1.0 + (re_over_263k ** -8.0)))
+            + ((reynolds ** 0.8) / 461000.0)
+        )
+        self.assertAlmostEqual(drag_coefficient_sphere(reynolds), expected, places=9)
+        self.assertAlmostEqual(drag_coefficient_sphere(1_000_001.0), 0.2, places=9)
 
     def test_reynolds_number_zeroes_for_non_physical_inputs(self) -> None:
         self.assertEqual(reynolds_number(0.0, 10.0, 0.1, 1.8e-5), 0.0)
@@ -165,7 +185,7 @@ class DragSimulationRegressionTests(unittest.TestCase):
 
         self.assertLess(warm["air_density"], cold["air_density"])
 
-    def test_shell_shape_uses_nonspherical_drag_model(self) -> None:
+    def test_shell_shape_defaults_to_ballistic_coefficient_model(self) -> None:
         sphere = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.076)
         shell = aerodynamic_state(
             speed=200.0,
@@ -173,20 +193,41 @@ class DragSimulationRegressionTests(unittest.TestCase):
             pressure_atm=1.0,
             diameter=0.076,
             projectile_shape="shell",
-            sphericity=0.65,
+            projectile_mass=4.3,
         )
-        self.assertNotAlmostEqual(shell["drag_coefficient"], sphere["drag_coefficient"], places=6)
-        self.assertLess(shell["drag_coefficient"], sphere["drag_coefficient"])
+        self.assertEqual(shell["drag_model"], "g7")
+        self.assertAlmostEqual(shell["ballistic_coefficient"], 0.22, places=9)
+        self.assertGreater(shell["drag_coefficient"], sphere["drag_coefficient"])
+
+    def test_shell_shape_can_use_g7_ballistic_coefficient_model(self) -> None:
+        shell = aerodynamic_state(
+            speed=370.0,
+            temperature_c=15.0,
+            pressure_atm=1.0,
+            diameter=0.076,
+            projectile_shape="shell",
+            projectile_mass=4.3,
+            drag_model="g7",
+            ballistic_coefficient=0.22,
+        )
+        self.assertEqual(shell["drag_model"], "g7")
+        self.assertAlmostEqual(shell["ballistic_coefficient"], 0.22, places=9)
+        self.assertGreater(shell["drag_force"], 0.0)
+        self.assertLess(shell["drag_coefficient"], 2.5)
 
     def test_high_mach_flow_increases_drag_coefficient_above_base_reynolds_value(self) -> None:
         subsonic = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
         transonic = aerodynamic_state(speed=340.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+        supersonic = aerodynamic_state(speed=500.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+        faster_supersonic = aerodynamic_state(speed=700.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
 
         self.assertLess(subsonic["mach"], 0.7)
         self.assertGreater(transonic["mach"], 0.95)
         self.assertAlmostEqual(subsonic["drag_coefficient"], subsonic["base_drag_coefficient"], places=9)
         self.assertGreater(transonic["drag_coefficient"], transonic["base_drag_coefficient"])
         self.assertGreater(transonic["drag_coefficient"], subsonic["drag_coefficient"])
+        self.assertGreater(supersonic["drag_coefficient"], transonic["drag_coefficient"])
+        self.assertLess(faster_supersonic["drag_coefficient"], supersonic["drag_coefficient"])
 
     def test_artillery_shell_launch_drag_coefficient_stays_in_reasonable_range(self) -> None:
         shell = aerodynamic_state(
@@ -195,10 +236,12 @@ class DragSimulationRegressionTests(unittest.TestCase):
             pressure_atm=1.0,
             diameter=0.076,
             projectile_shape="shell",
-            sphericity=0.66,
+            projectile_mass=4.3,
+            drag_model="g7",
+            ballistic_coefficient=0.22,
         )
         self.assertGreater(shell["mach"], 1.0)
-        self.assertLess(shell["drag_coefficient"], 1.0)
+        self.assertLess(shell["drag_coefficient"], 2.5)
 
     def test_rk4_solution_converges_as_time_step_shrinks(self) -> None:
         coarse = simulate_drag_reference({**self.base_params(), "dt": 0.02})
@@ -245,8 +288,29 @@ class DragSimulationRegressionTests(unittest.TestCase):
             "projectileShape": "shell",
             "sphericity": 0.66,
             "volumeFactor": 2.4,
+            "dragModel": "g7",
+            "ballisticCoefficient": 0.22,
         }
         drag = simulate_drag_reference(params)
         ideal = simulate_ideal_reference(params)
         self.assertGreater(drag["metrics"]["range"], 1500.0)
         self.assertGreater(drag["metrics"]["range"] / ideal["metrics"]["range"], 0.3)
+
+    def test_higher_shell_ballistic_coefficient_reduces_drag_and_extends_range(self) -> None:
+        params = {
+            "angle": 10.0,
+            "speed": 370.0,
+            "materialDensity": material_density_from_mass_and_diameter(4.3, 0.076, 2.4),
+            "temperature": 15.0,
+            "pressure": 1.0,
+            "diameter": 0.076,
+            "dt": 0.01,
+            "projectileShape": "shell",
+            "sphericity": 0.66,
+            "volumeFactor": 2.4,
+            "dragModel": "g7",
+        }
+        low_bc = simulate_drag_reference({**params, "ballisticCoefficient": 0.15})
+        high_bc = simulate_drag_reference({**params, "ballisticCoefficient": 0.30})
+        self.assertLess(high_bc["aero"]["launch_drag_force"], low_bc["aero"]["launch_drag_force"])
+        self.assertGreater(high_bc["metrics"]["range"], low_bc["metrics"]["range"])
