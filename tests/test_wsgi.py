@@ -1,6 +1,7 @@
 import json
 import re
 import unittest
+from http.cookies import SimpleCookie
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
@@ -33,11 +34,20 @@ from ballistics.schemas import (
     simulation_response,
 )
 from ballistics.web.app import create_application
-from ballistics.web.auth import verify_signed_payload
+from ballistics.web.auth import csrf_token_for_session, verify_signed_payload
 from ballistics.web.challenge import challenge_answer_is_correct
 from ballistics.web.templates import HTML_PAGE
 
 application = create_application(HTML_PAGE)
+
+
+def cookie_value_from_set_cookie(header: str, name: str) -> str | None:
+    cookie = SimpleCookie()
+    cookie.load(header)
+    morsel = cookie.get(name)
+    if morsel is None:
+        return None
+    return morsel.value
 
 
 class SimulationApiTests(unittest.TestCase):
@@ -132,7 +142,7 @@ class ServerHardeningTests(unittest.TestCase):
         response_body = b"".join(application(environ, start_response))
         return captured_status, captured_headers, response_body
 
-    def bootstrap_browser_session(self) -> tuple[str, str]:
+    def bootstrap_browser_session(self) -> tuple[str, str, str]:
         status, _, body = self.wsgi_request(path="/", method="GET", body=b"")
         self.assertEqual(status, "200 OK")
         rendered = body.decode("utf-8")
@@ -160,11 +170,15 @@ class ServerHardeningTests(unittest.TestCase):
         payload_data = json.loads(body.decode("utf-8"))
         self.assertIsInstance(payload_data, dict)
         payload = payload_data
-        session_match = re.search(rf"{SESSION_COOKIE_NAME}=([^;]+)", headers["Set-Cookie"])
-        self.assertIsNotNone(session_match)
-        assert session_match is not None
-        session_id = session_match.group(1)
-        return session_id, str(payload["csrfToken"])
+        session_token = cookie_value_from_set_cookie(headers["Set-Cookie"], SESSION_COOKIE_NAME)
+        self.assertIsNotNone(session_token)
+        assert session_token is not None
+        session_payload = verify_signed_payload(session_token)
+        self.assertIsNotNone(session_payload)
+        assert session_payload is not None
+        self.assertEqual(session_payload["kind"], "browser_session")
+        session_id = str(session_payload["sid"])
+        return session_token, session_id, str(payload["csrfToken"])
 
     def test_asset_path_containment_uses_resolved_relative_check(self) -> None:
         self.assertIn("asset_path.is_relative_to(RESOLVED_ASSETS_DIR)", Path("ballistics/web/app.py").read_text())
@@ -200,12 +214,20 @@ class ServerHardeningTests(unittest.TestCase):
         rendered = body.decode("utf-8")
         self.assertNotIn('const INITIAL_CSRF_TOKEN = "";', rendered)
         self.assertIn('const BOOTSTRAP_CHALLENGE = {"required":false};', rendered)
+        session_token = cookie_value_from_set_cookie(headers["Set-Cookie"], SESSION_COOKIE_NAME)
+        self.assertIsNotNone(session_token)
+        assert session_token is not None
+        session_payload = verify_signed_payload(session_token)
+        self.assertIsNotNone(session_payload)
+        assert session_payload is not None
+        self.assertEqual(session_payload["kind"], "browser_session")
+        self.assertIn(f'const INITIAL_CSRF_TOKEN = "{csrf_token_for_session(str(session_payload["sid"]))}";', rendered)
 
     def test_browser_session_can_call_api_with_cookie_and_csrf(self) -> None:
-        session_id, csrf = self.bootstrap_browser_session()
+        session_token, _, csrf = self.bootstrap_browser_session()
         status, _, body = self.wsgi_request(
             extra_environ={
-                "HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={session_id}",
+                "HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={session_token}",
                 "HTTP_X_CSRF_TOKEN": csrf,
             }
         )
@@ -213,8 +235,33 @@ class ServerHardeningTests(unittest.TestCase):
         self.assertIn(b'"ideal"', body)
 
     def test_browser_session_without_csrf_is_rejected(self) -> None:
-        session_id, _ = self.bootstrap_browser_session()
-        status, _, body = self.wsgi_request(extra_environ={"HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={session_id}"})
+        session_token, _, _ = self.bootstrap_browser_session()
+        status, _, body = self.wsgi_request(extra_environ={"HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={session_token}"})
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertIn(b"Unauthorized", body)
+
+    def test_forged_cookie_does_not_render_csrf_token(self) -> None:
+        forged_cookie = "attacker"
+        status, headers, body = self.wsgi_request(
+            path="/",
+            method="GET",
+            body=b"",
+            extra_environ={"HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={forged_cookie}"},
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertNotIn("Set-Cookie", headers)
+        rendered = body.decode("utf-8")
+        self.assertIn('const INITIAL_CSRF_TOKEN = "";', rendered)
+        self.assertNotIn(csrf_token_for_session(forged_cookie), rendered)
+
+    def test_forged_cookie_and_derived_csrf_are_rejected(self) -> None:
+        forged_cookie = "attacker"
+        status, _, body = self.wsgi_request(
+            extra_environ={
+                "HTTP_COOKIE": f"{SESSION_COOKIE_NAME}={forged_cookie}",
+                "HTTP_X_CSRF_TOKEN": csrf_token_for_session(forged_cookie),
+            }
+        )
         self.assertEqual(status, "401 Unauthorized")
         self.assertIn(b"Unauthorized", body)
 

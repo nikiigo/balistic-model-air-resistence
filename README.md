@@ -90,6 +90,7 @@ In implementation terms, the two projectile families work differently:
 
 - round shot spheres: compute a base `Cd(Re)` from the Haider-Levenspiel sphere-limit correlation, then scale that base value with the Mach correction `1 + Ma^2/4 + Ma^4/40`
 - shell-like projectiles: compute drag directly from the standard `G1/G7` drag-function plus ballistic coefficient (`BC`)
+- shell preset metadata may still include geometric descriptors such as `sphericity`, but in the current shell solver those descriptors do not independently modify drag beyond what is already represented by the chosen drag function and ballistic coefficient
 
 For shell-like projectiles, Reynolds number and Mach number are still reported as diagnostics, but they are not the primary inputs to the shell drag law. The displayed shell drag coefficient is an equivalent `Cd` derived afterward from the computed drag force:
 
@@ -161,6 +162,7 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 - round shot uses a spherical projectile model with a Haider-Levenspiel Reynolds-side base drag correlation and a separate Mach correction
 - shell presets now use a `G7` ballistic-coefficient model by default
 - the `G1/G7` drag-function shapes are standard fitted curves, but the preset ballistic-coefficient values are still approximate and not all tied to historical firing tables
+- shell `sphericity` is currently descriptive metadata for presets rather than an extra correction layered on top of the `G1/G7 + BC` law
 - pressure is clamped to a minimum supported value of `0.001 atm`
 - sphere compressibility uses a polynomial Mach correction on top of the Reynolds-based base drag, not a full `Cd(Re, Ma)` surface
 - no wind
