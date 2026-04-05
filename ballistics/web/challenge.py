@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import Dict
+from typing import Any, TypedDict
 
 from ballistics.constants import BOOTSTRAP_CHALLENGE_TTL_SECONDS, G
 from ballistics.web.auth import sign_payload
 
 
-def generate_bootstrap_challenge() -> Dict[str, str]:
+class ChallengePayload(TypedDict, total=False):
+    kind: str
+    prompt: str
+    baseAngle: int
+    speed: int
+    issuedAt: int
+    token: str
+
+
+def generate_bootstrap_challenge() -> ChallengePayload:
     challenge_id = secrets.randbelow(3)
     if challenge_id == 0:
-        challenge = {
+        challenge: ChallengePayload = {
             "kind": "vacuum_max_range_angle",
             "prompt": "Ignoring drag, what launch angle gives maximum range in vacuum? Answer in degrees.",
         }
@@ -34,7 +43,7 @@ def generate_bootstrap_challenge() -> Dict[str, str]:
     return challenge
 
 
-def challenge_answer_is_correct(challenge: Dict[str, object], answer: str) -> bool:
+def challenge_answer_is_correct(challenge: dict[str, Any], answer: str) -> bool:
     normalized = answer.strip().lower()
     if not normalized:
         return False

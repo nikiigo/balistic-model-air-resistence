@@ -151,7 +151,8 @@ class AerodynamicHelpersTests(unittest.TestCase):
 
 
 class DragSimulationRegressionTests(unittest.TestCase):
-    def base_params(self) -> dict[str, float]:
+    @staticmethod
+    def base_params() -> dict[str, float]:
         return {
             "angle": 35.0,
             "speed": 120.0,

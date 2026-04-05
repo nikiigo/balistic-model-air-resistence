@@ -6,7 +6,7 @@ import hmac
 import json
 import secrets
 from http.cookies import SimpleCookie
-from typing import Dict
+from typing import Any
 
 from ballistics.config import configured_allowed_origins, configured_api_key, configured_session_secret, public_mode_enabled
 from ballistics.constants import SESSION_COOKIE_NAME
@@ -35,7 +35,7 @@ def log_simulation_request(environ, status: str) -> None:
     print(f"[ballistics] {environ.get('REQUEST_METHOD', 'POST')} {environ.get('PATH_INFO', '')} {status} remote={remote_addr} origin={origin}")
 
 
-def parse_request_cookies(environ) -> SimpleCookie[str]:
+def parse_request_cookies(environ) -> SimpleCookie:
     cookie = SimpleCookie()
     raw_cookie = environ.get("HTTP_COOKIE", "")
     if raw_cookie:
@@ -70,13 +70,13 @@ def session_cookie_header(session_id: str) -> tuple[str, str]:
     return ("Set-Cookie", cookie.output(header="").strip())
 
 
-def sign_payload(payload: Dict[str, object]) -> str:
+def sign_payload(payload: dict[str, Any]) -> str:
     encoded_payload = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
     signature = hmac.new(configured_session_secret().encode("utf-8"), encoded_payload.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{encoded_payload}.{signature}"
 
 
-def verify_signed_payload(token: str) -> Dict[str, object] | None:
+def verify_signed_payload(token: str) -> dict[str, Any] | None:
     try:
         encoded_payload, signature = token.rsplit(".", 1)
     except ValueError:

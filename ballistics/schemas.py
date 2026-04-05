@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, TypedDict
+from typing import Any, cast, TypedDict
 
 from ballistics.constants import (
     DEFAULT_SHELL_BALLISTIC_COEFFICIENT,
@@ -27,7 +27,7 @@ from ballistics.constants import (
     MIN_TEMPERATURE_C,
     MIN_VOLUME_FACTOR,
 )
-from ballistics.physics.drag import simulate_drag_reference
+from ballistics.physics.drag import DragSimulationResult, simulate_drag_reference
 from ballistics.physics.ideal import simulate_ideal_reference
 from ballistics.presets import DEFAULT_SIMULATION_PARAMS, HISTORICAL_PLOT_REFERENCE_PARAMS, REFERENCE_PRESETS
 
@@ -82,23 +82,39 @@ class SimulationResponse(TypedDict):
     stableBounds: PlotBounds
 
 
+NUMERIC_PARAM_FIELDS = (
+    "angle",
+    "speed",
+    "materialDensity",
+    "temperature",
+    "pressure",
+    "diameter",
+    "dt",
+    "sphericity",
+    "volumeFactor",
+    "ballisticCoefficient",
+)
+
+
 def clamp(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
 
 
-def compute_plot_bounds(params: SimulationParams) -> PlotBounds:
-    sampled_angles = [5.0, 15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0]
+def _bounds_from_angles(params: SimulationParams, sampled_angles: list[float], x_scale: float, y_scale: float) -> PlotBounds:
     max_x = 1.0
     max_y = 1.0
-
     for angle in sampled_angles:
-        sample_params = {**params, "angle": angle}
+        sample_params: SimulationParams = {**params, "angle": angle}
         ideal = simulate_ideal_reference(sample_params)
         drag = simulate_drag_reference(sample_params)
         max_x = max(max_x, ideal["metrics"]["range"], drag["metrics"]["range"])
         max_y = max(max_y, ideal["metrics"]["maxHeight"], drag["metrics"]["max_height"])
+    return {"maxX": max_x * x_scale, "maxY": max_y * y_scale}
 
-    return {"maxX": max_x * 1.08, "maxY": max_y * 1.15}
+
+def compute_plot_bounds(params: SimulationParams) -> PlotBounds:
+    sampled_angles = [5.0, 15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0]
+    return _bounds_from_angles(params, sampled_angles, 1.08, 1.15)
 
 
 def compute_focused_plot_bounds(params: SimulationParams) -> PlotBounds:
@@ -107,21 +123,11 @@ def compute_focused_plot_bounds(params: SimulationParams) -> PlotBounds:
         params["angle"],
         min(85.0, params["angle"] + 10.0),
     })
-    max_x = 1.0
-    max_y = 1.0
-
-    for angle in sampled_angles:
-        sample_params = {**params, "angle": angle}
-        ideal = simulate_ideal_reference(sample_params)
-        drag = simulate_drag_reference(sample_params)
-        max_x = max(max_x, ideal["metrics"]["range"], drag["metrics"]["range"])
-        max_y = max(max_y, ideal["metrics"]["maxHeight"], drag["metrics"]["max_height"])
-
-    return {"maxX": max_x * 1.1, "maxY": max_y * 1.18}
+    return _bounds_from_angles(params, sampled_angles, 1.1, 1.18)
 
 
-def serialize_drag_result(result: dict[str, Any]) -> SerializedDragResult:
-    points = [
+def serialize_drag_result(result: DragSimulationResult) -> SerializedDragResult:
+    points: list[SerializedDragPoint] = [
         {
             "x": point["x"],
             "y": point["y"],
@@ -171,20 +177,23 @@ def serialize_drag_result(result: dict[str, Any]) -> SerializedDragResult:
 
 
 PLOT_REFERENCE_SCENARIOS: list[SimulationParams] = [
-    DEFAULT_SIMULATION_PARAMS,
-    *REFERENCE_PRESETS.values(),
-    *HISTORICAL_PLOT_REFERENCE_PARAMS.values(),
-    {**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM},
-    {**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM},
-    {
-        **DEFAULT_SIMULATION_PARAMS,
-        "angle": 45.0,
-        "speed": 440.0,
-        "materialDensity": 12000.0,
-        "temperature": -10.0,
-        "pressure": 1.2,
-        "diameter": 0.01,
-    },
+    cast(SimulationParams, DEFAULT_SIMULATION_PARAMS),
+    *[cast(SimulationParams, value) for value in REFERENCE_PRESETS.values()],
+    *[cast(SimulationParams, value) for value in HISTORICAL_PLOT_REFERENCE_PARAMS.values()],
+    cast(SimulationParams, {**DEFAULT_SIMULATION_PARAMS, "angle": 45.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM}),
+    cast(SimulationParams, {**DEFAULT_SIMULATION_PARAMS, "angle": 85.0, "speed": 440.0, "pressure": MIN_PRESSURE_ATM}),
+    cast(
+        SimulationParams,
+        {
+            **DEFAULT_SIMULATION_PARAMS,
+            "angle": 45.0,
+            "speed": 440.0,
+            "materialDensity": 12000.0,
+            "temperature": -10.0,
+            "pressure": 1.2,
+            "diameter": 0.01,
+        },
+    ),
 ]
 
 FIXED_PLOT_BOUNDS: PlotBounds = {"maxX": 1.0, "maxY": 1.0}
@@ -205,52 +214,58 @@ for _gun_key, _gun_params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
 
 
 def normalize_simulation_params(payload: dict[str, object]) -> SimulationParams:
-    params: SimulationParams = {**DEFAULT_SIMULATION_PARAMS}
-    numeric_fields = (
-        "angle",
-        "speed",
-        "materialDensity",
-        "temperature",
-        "pressure",
-        "diameter",
-        "dt",
-        "sphericity",
-        "volumeFactor",
-        "ballisticCoefficient",
-    )
-    for field in numeric_fields:
+    raw_params = {**DEFAULT_SIMULATION_PARAMS}
+    for field in NUMERIC_PARAM_FIELDS:
         if field in payload:
             candidate = float(payload[field])
             if not math.isfinite(candidate):
                 raise ValueError(f"{field} must be finite.")
-            params[field] = candidate
+            raw_params[field] = candidate
 
-    projectile_shape = str(payload.get("projectileShape", params["projectileShape"]))
-    params["projectileShape"] = "shell" if projectile_shape == "shell" else "sphere"
-    drag_model = str(payload.get("dragModel", params.get("dragModel", DEFAULT_SHELL_DRAG_MODEL))).lower()
-    params["dragModel"] = "g1" if drag_model == "g1" else DEFAULT_SHELL_DRAG_MODEL
-    params["angle"] = clamp(float(params["angle"]), MIN_ANGLE_DEG, MAX_ANGLE_DEG)
-    params["speed"] = clamp(float(params["speed"]), MIN_SPEED, MAX_SPEED)
-    params["materialDensity"] = clamp(float(params["materialDensity"]), MIN_MATERIAL_DENSITY, MAX_MATERIAL_DENSITY)
-    params["temperature"] = clamp(float(params["temperature"]), MIN_TEMPERATURE_C, MAX_TEMPERATURE_C)
-    params["pressure"] = clamp(float(params["pressure"]), MIN_PRESSURE_ATM, MAX_PRESSURE_ATM)
-    params["diameter"] = clamp(float(params["diameter"]), MIN_DIAMETER_M, MAX_DIAMETER_M)
-    params["dt"] = clamp(float(params["dt"]), MIN_DT, MAX_DT)
-    if params["projectileShape"] != "shell":
-        params["sphericity"] = 1.0
-        params["volumeFactor"] = 1.0
-        params["ballisticCoefficient"] = 0.0
+    projectile_shape = str(payload.get("projectileShape", raw_params["projectileShape"]))
+    normalized_shape = "shell" if projectile_shape == "shell" else "sphere"
+    drag_model = str(payload.get("dragModel", raw_params.get("dragModel", DEFAULT_SHELL_DRAG_MODEL))).lower()
+    normalized_drag_model = "g1" if drag_model == "g1" else DEFAULT_SHELL_DRAG_MODEL
+
+    angle = clamp(float(raw_params["angle"]), MIN_ANGLE_DEG, MAX_ANGLE_DEG)
+    speed = clamp(float(raw_params["speed"]), MIN_SPEED, MAX_SPEED)
+    material_density = clamp(float(raw_params["materialDensity"]), MIN_MATERIAL_DENSITY, MAX_MATERIAL_DENSITY)
+    temperature = clamp(float(raw_params["temperature"]), MIN_TEMPERATURE_C, MAX_TEMPERATURE_C)
+    pressure = clamp(float(raw_params["pressure"]), MIN_PRESSURE_ATM, MAX_PRESSURE_ATM)
+    diameter = clamp(float(raw_params["diameter"]), MIN_DIAMETER_M, MAX_DIAMETER_M)
+    dt = clamp(float(raw_params["dt"]), MIN_DT, MAX_DT)
+
+    if normalized_shape != "shell":
+        sphericity = 1.0
+        volume_factor = 1.0
+        ballistic_coefficient = 0.0
     else:
-        params["sphericity"] = clamp(float(params["sphericity"]), MIN_SPHERICITY, MAX_SPHERICITY)
-        params["volumeFactor"] = clamp(float(params["volumeFactor"]), MIN_VOLUME_FACTOR, MAX_VOLUME_FACTOR)
-        if "ballisticCoefficient" not in payload:
-            params["ballisticCoefficient"] = DEFAULT_SHELL_BALLISTIC_COEFFICIENT
-        params["ballisticCoefficient"] = clamp(
-            float(params.get("ballisticCoefficient", DEFAULT_SHELL_BALLISTIC_COEFFICIENT)),
+        sphericity = clamp(float(raw_params["sphericity"]), MIN_SPHERICITY, MAX_SPHERICITY)
+        volume_factor = clamp(float(raw_params["volumeFactor"]), MIN_VOLUME_FACTOR, MAX_VOLUME_FACTOR)
+        base_ballistic_coefficient = (
+            DEFAULT_SHELL_BALLISTIC_COEFFICIENT
+            if "ballisticCoefficient" not in payload
+            else float(raw_params["ballisticCoefficient"])
+        )
+        ballistic_coefficient = clamp(
+            base_ballistic_coefficient,
             MIN_BALLISTIC_COEFFICIENT,
             MAX_BALLISTIC_COEFFICIENT,
         )
-    return params
+    return {
+        "angle": angle,
+        "speed": speed,
+        "materialDensity": material_density,
+        "temperature": temperature,
+        "pressure": pressure,
+        "diameter": diameter,
+        "dt": dt,
+        "projectileShape": normalized_shape,
+        "sphericity": sphericity,
+        "volumeFactor": volume_factor,
+        "dragModel": normalized_drag_model,
+        "ballisticCoefficient": ballistic_coefficient,
+    }
 
 
 def simulation_response(payload: dict[str, object]) -> SimulationResponse:
