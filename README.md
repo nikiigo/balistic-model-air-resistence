@@ -116,11 +116,11 @@ At each integration step, the drag solver advances the trajectory with a classic
 
 ## Validation Snapshot
 
-The table below compares the current model against a few historical artillery reference points that are close to presets in the simulator. These are spot checks, not a full firing-table calibration.
+The table below compares the current model against a few historical artillery reference points that are close to presets in the simulator. These are spot checks, not a full firing-table calibration. The listed model ranges are also covered by regression tests so the documented snapshot stays aligned with the solver.
 
 | Launcher | Comparison setup | Model range | Historical reference | Error |
 | --- | --- | ---: | ---: | ---: |
-| M1841 6-pounder gun | `5°` elevation, round shot | `1464 yd` | `1523 yd` | `-3.9%` |
+| M1841 6-pounder gun | `5°` elevation, round shot | `1451 yd` | `1523 yd` | `-4.7%` |
 | M1857 12-pounder Napoleon | `5°` elevation, round shot | `1622 yd` | `1680 yd` | `-3.4%` |
 | 3-inch Ordnance Rifle | `5°` elevation, shell preset | `1539 yd` | `1800 yd` effective range | `-14.5%` |
 | 10-pounder Parrott rifle | `5°` elevation, shell preset | `1528 yd` | `1800 yd` effective range | `-15.1%` |
@@ -181,10 +181,10 @@ python3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-Start the local web server:
+Start the local app with Gunicorn:
 
 ```bash
-python3 main.py
+.venv/bin/gunicorn --bind 127.0.0.1:8000 main:application
 ```
 
 Then open:
@@ -196,11 +196,11 @@ http://127.0.0.1:8000
 You can also bind a different interface or port:
 
 ```bash
-python3 main.py --host 127.0.0.1 --port 8888
+.venv/bin/gunicorn --bind 127.0.0.1:8888 main:application
 ```
 
-This server is still suitable for local use, but it now also supports a basic internet-facing browser deployment model behind a reverse proxy. Application-layer protections include browser sessions, CSRF checks, origin allowlists, and an optional bootstrap challenge. It is still not a complete standalone internet edge service: TLS, throttling, and network exposure controls should remain at the proxy and host layers.
-For browser-testing the deployment path locally, you can also run:
+The application still exposes the same WSGI entrypoint through [`main.py`](/home/nikiigo/balistic-model-air-resistence/main.py), but Gunicorn is the recommended local run path because it matches the deployment path more closely. Application-layer protections include browser sessions, CSRF checks, origin allowlists, and an optional bootstrap challenge. It is still not a complete standalone internet edge service: TLS, throttling, and network exposure controls should remain at the proxy and host layers.
+For browser-testing the deployment path locally, run:
 
 ```bash
 .venv/bin/gunicorn --bind 127.0.0.1:8000 main:application

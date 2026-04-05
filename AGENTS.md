@@ -13,11 +13,11 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 ## Run And Test
 
-- Local app: `python3 main.py`
-- Production-style local run: `.venv/bin/gunicorn --bind 127.0.0.1:8000 main:application`
+- Local app: `.venv/bin/gunicorn --bind 127.0.0.1:8000 main:application`
+- WSGI entrypoint module: `main.py`
 - Main test command in this repo: `python -m unittest -q`
 - `pytest` may not be installed in the environment; prefer `python -m unittest -q` unless the repo is updated to depend on pytest explicitly.
-- For browser testing, prefer Gunicorn over `python3 main.py` so the WSGI deployment path is exercised.
+- For browser testing, use Gunicorn so the WSGI deployment path is exercised.
 - In this sandboxed environment, binding to `127.0.0.1:8000` may require escalated permissions.
 
 ## Code Map

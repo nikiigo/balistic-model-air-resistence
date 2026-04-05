@@ -1,5 +1,6 @@
 import math
 import unittest
+from copy import deepcopy
 
 from ballistics.constants import (
     AIR_GAS_CONSTANT,
@@ -25,7 +26,10 @@ from ballistics.physics.drag import (
     sphere_area_from_diameter,
 )
 from ballistics.physics.ideal import analytical_metrics, simulate_ideal_reference
+from ballistics.presets import HISTORICAL_PLOT_REFERENCE_PARAMS
 from ballistics.schemas import SimulationParams
+
+YARDS_PER_METER = 1.0936132983377078
 
 
 def expected_haider_levenspiel_drag(reynolds: float, phi: float = 1.0) -> float:
@@ -345,3 +349,41 @@ class DragSimulationRegressionTests(unittest.TestCase):
         high_bc = simulate_drag_reference({**params, "ballisticCoefficient": 0.30})
         self.assertLess(high_bc["aero"]["launch_drag_force"], low_bc["aero"]["launch_drag_force"])
         self.assertGreater(high_bc["metrics"]["range"], low_bc["metrics"]["range"])
+
+
+class ValidationSnapshotRegressionTests(unittest.TestCase):
+    def assert_range_matches_snapshot(self, params: SimulationParams, expected_yards: float, places: int = 0) -> None:
+        result = simulate_drag_reference(params)
+        self.assertAlmostEqual(result["metrics"]["range"] * YARDS_PER_METER, expected_yards, places=places)
+
+    def test_m1841_six_pounder_snapshot(self) -> None:
+        params: SimulationParams = {
+            "angle": 5.0,
+            "speed": 1450.0 * 0.3048,
+            "materialDensity": material_density_from_mass_and_diameter(2.72155, 0.093218),
+            "temperature": 15.0,
+            "pressure": 1.0,
+            "diameter": 0.093218,
+            "dt": 0.01,
+            "projectileShape": "sphere",
+            "sphericity": 1.0,
+            "volumeFactor": 1.0,
+            "dragModel": "g7",
+            "ballisticCoefficient": 0.0,
+        }
+        self.assert_range_matches_snapshot(params, 1451.0, places=0)
+
+    def test_napoleon_snapshot(self) -> None:
+        params = deepcopy(HISTORICAL_PLOT_REFERENCE_PARAMS["napoleon"])
+        params["angle"] = 5.0
+        self.assert_range_matches_snapshot(params, 1622.0, places=0)
+
+    def test_ordnance_snapshot(self) -> None:
+        params = deepcopy(HISTORICAL_PLOT_REFERENCE_PARAMS["ordnance"])
+        params["angle"] = 5.0
+        self.assert_range_matches_snapshot(params, 1539.0, places=0)
+
+    def test_parrott_snapshot(self) -> None:
+        params = deepcopy(HISTORICAL_PLOT_REFERENCE_PARAMS["parrott"])
+        params["angle"] = 5.0
+        self.assert_range_matches_snapshot(params, 1528.0, places=0)
