@@ -200,7 +200,7 @@ You can also bind a different interface or port:
 .venv/bin/gunicorn --bind 127.0.0.1:8888 main:application
 ```
 
-The application still exposes the same WSGI entrypoint through [`main.py`](/home/nikiigo/balistic-model-air-resistence/main.py), but Gunicorn is the recommended local run path because it matches the deployment path more closely. Application-layer protections include browser sessions, CSRF checks, origin allowlists, and an optional bootstrap challenge. It is still not a complete standalone internet edge service: TLS, throttling, and network exposure controls should remain at the proxy and host layers.
+The application still exposes the same WSGI entrypoint through [`main.py`](main.py), but Gunicorn is the recommended local run path because it matches the deployment path more closely. Application-layer protections include browser sessions, CSRF checks, origin allowlists, and an optional bootstrap challenge. It is still not a complete standalone internet edge service: TLS, throttling, and network exposure controls should remain at the proxy and host layers.
 For browser-testing the deployment path locally, run:
 
 ```bash
