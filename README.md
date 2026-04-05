@@ -106,6 +106,27 @@ The flight model is a 2D point-mass model in horizontal distance and height.
 
 At each integration step, the drag solver advances the trajectory with a classical fourth-order Runge-Kutta (RK4) method.
 
+## Validation Snapshot
+
+The table below compares the current model against a few historical artillery reference points that are close to presets in the simulator. These are spot checks, not a full firing-table calibration.
+
+| Launcher | Comparison setup | Model range | Historical reference | Error |
+| --- | --- | ---: | ---: | ---: |
+| M1857 12-pounder Napoleon | `5°` elevation, round shot | `1514 yd` | `1680 yd` | `-9.9%` |
+| 3-inch Ordnance Rifle | `5°` elevation, shell preset | `1539 yd` | `1800 yd` effective range | `-14.5%` |
+| 10-pounder Parrott rifle | `5°` elevation, shell preset | `1528 yd` | `1800 yd` effective range | `-15.1%` |
+
+Reference sources:
+
+- Vicksburg National Military Park, table of fire for the Light 12-Pounder Gun, Model 1857: https://www.nps.gov/vick/learn/education/mathematics-range-chart.htm
+- NPS Shenandoah artillery overview with effective-range summaries for the 3-inch Ordnance Rifle and 10-pounder Parrott: https://www.nps.gov/articles/000/civil-war-weapons-in-the-shenandoah-valley.htm
+
+Caveat:
+
+- the Napoleon comparison uses an explicit table-of-fire entry, while the Ordnance and Parrott values above are NPS effective-range summaries rather than one matching firing table
+- some preset muzzle velocities and BC values are still modeled approximations, so this should be treated as a first-pass validation check rather than a final calibration
+- at the moment, the simulator is better validated for round-shot sphere projectiles than for elongated shell projectiles
+
 ## Output Metrics
 
 The current UI reports:
