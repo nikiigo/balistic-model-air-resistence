@@ -22,18 +22,18 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 ## Code Map
 
-- [`main.py`](/home/nikiigo/balistic-model-air-resistence/main.py): WSGI entrypoint and local server runner.
-- [`ballistics/web/app.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/app.py): request routing, JSON parsing, session/bootstrap flow, API responses.
-- [`ballistics/web/templates.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/templates.py): inline frontend app and UI contract.
-- [`ballistics/web/pages.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/pages.py): injects CSRF token and bootstrap challenge into HTML.
-- [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py): API-key auth, signed browser session handling, CSRF derivation.
-- [`ballistics/schemas.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/schemas.py): input normalization, plot bounds, API response serialization.
-- [`ballistics/physics/ideal.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/physics/ideal.py): analytical ideal-motion solver.
-- [`ballistics/physics/drag.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/physics/drag.py): aerodynamic helpers and RK4 drag solver.
-- [`ballistics/presets.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/presets.py): default parameters and historical launcher presets.
-- [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py): physics regression tests.
-- [`tests/test_wsgi.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_wsgi.py): API/auth/WSGI tests.
-- [`tests/test_frontend.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_frontend.py): frontend contract tests using string assertions against the HTML template.
+- [`main.py`](main.py): WSGI entrypoint and local server runner.
+- [`ballistics/web/app.py`](ballistics/web/app.py): request routing, JSON parsing, session/bootstrap flow, API responses.
+- [`ballistics/web/templates.py`](ballistics/web/templates.py): inline frontend app and UI contract.
+- [`ballistics/web/pages.py`](ballistics/web/pages.py): injects CSRF token and bootstrap challenge into HTML.
+- [`ballistics/web/auth.py`](ballistics/web/auth.py): API-key auth, signed browser session handling, CSRF derivation.
+- [`ballistics/schemas.py`](ballistics/schemas.py): input normalization, plot bounds, API response serialization.
+- [`ballistics/physics/ideal.py`](ballistics/physics/ideal.py): analytical ideal-motion solver.
+- [`ballistics/physics/drag.py`](ballistics/physics/drag.py): aerodynamic helpers and RK4 drag solver.
+- [`ballistics/presets.py`](ballistics/presets.py): default parameters and historical launcher presets.
+- [`tests/test_physics.py`](tests/test_physics.py): physics regression tests.
+- [`tests/test_wsgi.py`](tests/test_wsgi.py): API/auth/WSGI tests.
+- [`tests/test_frontend.py`](tests/test_frontend.py): frontend contract tests using string assertions against the HTML template.
 
 ## Physics Conventions
 
@@ -42,21 +42,22 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Shell drag is driven by drag function (`G1`/`G7`) and ballistic coefficient. `sphericity` may be carried in preset metadata, but it is not an independent driver in the current shell drag law.
 - Shell `dragCoefficient` values returned by the API are equivalent coefficients derived from drag force, not direct `Cd(Re, Ma)` correlation outputs.
 - Pressure is clamped to the supported floor `MIN_PRESSURE_ATM = 0.001`.
-- When changing physics behavior, add or update regression tests in [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py).
+- When changing physics behavior, add or update regression tests in [`tests/test_physics.py`](tests/test_physics.py).
 
 ## Validation Snapshot
 
-- The README's `Validation Snapshot` table is backed by regression tests in [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py) under `ValidationSnapshotRegressionTests`.
+- The README's `Validation Snapshot` table is backed by regression tests in [`tests/test_physics.py`](tests/test_physics.py) under `ValidationSnapshotRegressionTests`.
 - The Napoleon, Ordnance, and Parrott snapshot checks are created by copying the corresponding entries from `HISTORICAL_PLOT_REFERENCE_PARAMS` and overriding only the comparison angle to `5.0` degrees.
-- The M1841 6-pounder snapshot is not a named preset. It is reproduced directly from the documented comparison setup: `5°`, `1450 ft/s`, `6 lb` round shot, modeled as a sphere with diameter `0.093218 m` and mass `2.72155 kg`.
+- The M1841 6-pounder snapshot now corresponds to the named preset key `m1841SixPounder`, but the comparison setup is still the documented `5°`, `1450 ft/s`, `6 lb` round-shot case with diameter `0.093218 m` and mass `2.72155 kg`.
 - Snapshot assertions currently compare modeled range in yards after converting from meters with `1.0936132983377078`.
 - If physics changes move one of these ranges, update both the regression test and the README table in the same change. Do not leave the README snapshot as a stale hand-maintained number.
+- When adding a historical launcher preset, update all of: [`ballistics/presets.py`](ballistics/presets.py), [`ballistics/web/templates.py`](ballistics/web/templates.py), [`tests/test_frontend.py`](tests/test_frontend.py), and any backend stable-bounds coverage in [`tests/test_wsgi.py`](tests/test_wsgi.py). If the preset is part of the documented list, update the README too.
 
 ## Review Hotspots
 
-- Authentication and browser session handling in [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py) and [`ballistics/web/app.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
+- Authentication and browser session handling in [`ballistics/web/auth.py`](ballistics/web/auth.py) and [`ballistics/web/app.py`](ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
 - The frontend is embedded in one large HTML template. Small behavior changes can require both JS updates and contract-test updates.
-- Plot-bounds behavior is partly precomputed in [`ballistics/schemas.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/schemas.py); changes there can affect historical presets and graph scaling.
+- Plot-bounds behavior is partly precomputed in [`ballistics/schemas.py`](ballistics/schemas.py); changes there can affect historical presets and graph scaling.
 
 ## Change Checklist
 

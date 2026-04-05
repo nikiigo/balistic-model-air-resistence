@@ -58,3 +58,4 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Counterweight trebuchet", HTML_PAGE)
         self.assertIn("Mangonel / traction catapult", HTML_PAGE)
         self.assertIn("Ballista", HTML_PAGE)
+        self.assertIn("M1841 6-pounder gun", HTML_PAGE)

@@ -113,6 +113,10 @@ class SimulationApiTests(unittest.TestCase):
         response = simulation_response({"currentGun": "ballista"})
         self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["ballista"])
 
+    def test_simulation_response_uses_historical_stable_bounds_for_m1841_six_pounder(self) -> None:
+        response = simulation_response({"currentGun": "m1841SixPounder"})
+        self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["m1841SixPounder"])
+
 
 class ServerHardeningTests(unittest.TestCase):
     @staticmethod

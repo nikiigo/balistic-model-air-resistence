@@ -192,6 +192,18 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "sphericity": 1.0,
         "volumeFactor": 1.0,
     },
+    "m1841SixPounder": {
+        "angle": 5.0,
+        "speed": 1450.0 * 0.3048,
+        "materialDensity": material_density_from_mass_and_diameter(2.72155, 0.093218),
+        "temperature": 15.0,
+        "pressure": 1.0,
+        "diameter": 0.093218,
+        "dt": 0.01,
+        "projectileShape": "sphere",
+        "sphericity": 1.0,
+        "volumeFactor": 1.0,
+    },
     "paixhans": {
         "angle": 5.0,
         "speed": 400.0,
