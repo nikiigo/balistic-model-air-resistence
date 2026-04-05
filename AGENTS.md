@@ -13,11 +13,11 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 ## Run And Test
 
-- Local app: `python3 main.py`
-- Production-style local run: `.venv/bin/gunicorn --bind 127.0.0.1:8000 main:application`
+- Local app: `.venv/bin/gunicorn --bind 127.0.0.1:8000 main:application`
+- WSGI entrypoint module: `main.py`
 - Main test command in this repo: `python -m unittest -q`
 - `pytest` may not be installed in the environment; prefer `python -m unittest -q` unless the repo is updated to depend on pytest explicitly.
-- For browser testing, prefer Gunicorn over `python3 main.py` so the WSGI deployment path is exercised.
+- For browser testing, use Gunicorn so the WSGI deployment path is exercised.
 - In this sandboxed environment, binding to `127.0.0.1:8000` may require escalated permissions.
 
 ## Code Map
@@ -43,6 +43,14 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Shell `dragCoefficient` values returned by the API are equivalent coefficients derived from drag force, not direct `Cd(Re, Ma)` correlation outputs.
 - Pressure is clamped to the supported floor `MIN_PRESSURE_ATM = 0.001`.
 - When changing physics behavior, add or update regression tests in [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py).
+
+## Validation Snapshot
+
+- The README's `Validation Snapshot` table is backed by regression tests in [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py) under `ValidationSnapshotRegressionTests`.
+- The Napoleon, Ordnance, and Parrott snapshot checks are created by copying the corresponding entries from `HISTORICAL_PLOT_REFERENCE_PARAMS` and overriding only the comparison angle to `5.0` degrees.
+- The M1841 6-pounder snapshot is not a named preset. It is reproduced directly from the documented comparison setup: `5°`, `1450 ft/s`, `6 lb` round shot, modeled as a sphere with diameter `0.093218 m` and mass `2.72155 kg`.
+- Snapshot assertions currently compare modeled range in yards after converting from meters with `1.0936132983377078`.
+- If physics changes move one of these ranges, update both the regression test and the README table in the same change. Do not leave the README snapshot as a stale hand-maintained number.
 
 ## Review Hotspots
 
