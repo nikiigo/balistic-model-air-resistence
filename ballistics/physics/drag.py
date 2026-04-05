@@ -99,7 +99,6 @@ class AeroState(TypedDict):
 
 class ProjectileDescriptor(TypedDict):
     projectile_shape: str
-    sphericity: float
     drag_model: str
     ballistic_coefficient: float
 
@@ -447,9 +446,6 @@ def drag_acceleration(
 def _build_drag_summary(
     projectile_mass: float,
     projectile_shape: str,
-    sphericity: float,
-    drag_model: str,
-    ballistic_coefficient: float,
     launch_aero: AeroState,
     impact_aero: AeroState,
 ) -> DragSummary:
@@ -457,9 +453,8 @@ def _build_drag_summary(
     return {
         "projectile_mass": projectile_mass,
         "projectile_shape": projectile_shape,
-        "sphericity": sphericity,
-        "drag_model": drag_model,
-        "ballistic_coefficient": ballistic_coefficient,
+        "drag_model": impact_aero["drag_model"],
+        "ballistic_coefficient": impact_aero["ballistic_coefficient"],
         "air_density": impact_aero["air_density"],
         "viscosity": impact_aero["viscosity"],
         "area": impact_aero["area"],
@@ -605,9 +600,6 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
                 "aero": _build_drag_summary(
                     projectile_mass,
                     projectile_shape,
-                    sphericity,
-                    drag_model,
-                    ballistic_coefficient,
                     points[0],
                     impact_aero,
                 ),
@@ -628,9 +620,6 @@ def simulate_drag_reference(params: dict[str, Any], max_steps: int = 25000) -> D
         "aero": _build_drag_summary(
             projectile_mass,
             projectile_shape,
-            sphericity,
-            drag_model,
-            ballistic_coefficient,
             points[0],
             aero,
         ),

@@ -26,7 +26,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 - [`ballistics/web/app.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/app.py): request routing, JSON parsing, session/bootstrap flow, API responses.
 - [`ballistics/web/templates.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/templates.py): inline frontend app and UI contract.
 - [`ballistics/web/pages.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/pages.py): injects CSRF token and bootstrap challenge into HTML.
-- [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py): API-key auth, browser session handling, CSRF derivation.
+- [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py): API-key auth, signed browser session handling, CSRF derivation.
 - [`ballistics/schemas.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/schemas.py): input normalization, plot bounds, API response serialization.
 - [`ballistics/physics/ideal.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/physics/ideal.py): analytical ideal-motion solver.
 - [`ballistics/physics/drag.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/physics/drag.py): aerodynamic helpers and RK4 drag solver.
@@ -46,13 +46,13 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 ## Review Hotspots
 
-- Authentication and browser session handling in [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py) and [`ballistics/web/app.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/app.py) need careful review for trust boundaries.
+- Authentication and browser session handling in [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py) and [`ballistics/web/app.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
 - The frontend is embedded in one large HTML template. Small behavior changes can require both JS updates and contract-test updates.
 - Plot-bounds behavior is partly precomputed in [`ballistics/schemas.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/schemas.py); changes there can affect historical presets and graph scaling.
 
 ## Change Checklist
 
-- Run `python -m unittest -q` af <<<ter behavior changes.
+- Run `python -m unittest -q` after behavior changes.
 - If changing API fields, update both backend serialization and frontend consumers.
 - If changing preset semantics, check historical preset rendering and focused/stable plot bounds.
 - If touching auth/session code, add a concrete WSGI test that reproduces the protected flow.

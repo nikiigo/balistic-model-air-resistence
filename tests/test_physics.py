@@ -43,6 +43,13 @@ class AnalyticalMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(metrics["max_height"], 0.0)
         self.assertAlmostEqual(metrics["range"], 0.0)
 
+    def test_zero_flight_ideal_solution_contains_single_point(self) -> None:
+        result = simulate_ideal_reference({"angle": 0.0, "speed": 20.0, "dt": 0.01})
+        self.assertEqual(len(result["points"]), 1)
+        self.assertEqual(result["points"][0]["t"], 0.0)
+        self.assertEqual(result["points"][0]["x"], 0.0)
+        self.assertEqual(result["points"][0]["y"], 0.0)
+
     def test_forty_five_degree_solution_matches_closed_form(self) -> None:
         speed = 30
         metrics = analytical_metrics(speed=speed, angle_deg=45)
@@ -201,6 +208,24 @@ class DragSimulationRegressionTests(unittest.TestCase):
         self.assertEqual(shell["drag_model"], "g7")
         self.assertAlmostEqual(shell["ballistic_coefficient"], 0.22, places=9)
         self.assertGreater(shell["drag_coefficient"], sphere["drag_coefficient"])
+
+    def test_shell_summary_reports_effective_default_ballistic_coefficient(self) -> None:
+        result = simulate_drag_reference({
+            "angle": 10.0,
+            "speed": 370.0,
+            "materialDensity": material_density_from_mass_and_diameter(4.3, 0.076, 2.4),
+            "temperature": 15.0,
+            "pressure": 1.0,
+            "diameter": 0.076,
+            "dt": 0.01,
+            "projectileShape": "shell",
+            "sphericity": 0.66,
+            "volumeFactor": 2.4,
+            "dragModel": "g7",
+            "ballisticCoefficient": 0.0,
+        })
+        self.assertAlmostEqual(result["aero"]["ballistic_coefficient"], 0.22, places=9)
+        self.assertAlmostEqual(result["aero"]["ballistic_coefficient"], result["points"][0]["ballistic_coefficient"], places=9)
 
     def test_shell_shape_can_use_g7_ballistic_coefficient_model(self) -> None:
         shell = aerodynamic_state(
