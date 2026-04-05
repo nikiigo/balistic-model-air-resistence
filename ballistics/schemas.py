@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict
+from typing import Any, TypedDict
 
 from ballistics.constants import (
     DEFAULT_SHELL_BALLISTIC_COEFFICIENT,
@@ -32,11 +32,61 @@ from ballistics.physics.ideal import simulate_ideal_reference
 from ballistics.presets import DEFAULT_SIMULATION_PARAMS, HISTORICAL_PLOT_REFERENCE_PARAMS, REFERENCE_PRESETS
 
 
+class SimulationParams(TypedDict):
+    angle: float
+    speed: float
+    materialDensity: float
+    temperature: float
+    pressure: float
+    diameter: float
+    dt: float
+    projectileShape: str
+    sphericity: float
+    volumeFactor: float
+    dragModel: str
+    ballisticCoefficient: float
+
+
+class PlotBounds(TypedDict):
+    maxX: float
+    maxY: float
+
+
+class SerializedDragPoint(TypedDict):
+    x: float
+    y: float
+    t: float
+    vx: float
+    vy: float
+    airDensity: float
+    viscosity: float
+    speedOfSound: float
+    area: float
+    reynolds: float
+    mach: float
+    baseDragCoefficient: float
+    dragCoefficient: float
+    dragForce: float
+
+
+class SerializedDragResult(TypedDict):
+    points: list[SerializedDragPoint]
+    metrics: dict[str, Any]
+    aero: dict[str, Any]
+
+
+class SimulationResponse(TypedDict):
+    ideal: dict[str, Any]
+    drag: SerializedDragResult
+    focusedBounds: PlotBounds
+    stableBounds: PlotBounds
+
+
 def clamp(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
 
 
-def compute_plot_bounds(params: Dict[str, float]) -> Dict[str, float]:
+def compute_plot_bounds(params: SimulationParams) -> PlotBounds:
     sampled_angles = [5.0, 15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0]
     max_x = 1.0
     max_y = 1.0
@@ -51,7 +101,7 @@ def compute_plot_bounds(params: Dict[str, float]) -> Dict[str, float]:
     return {"maxX": max_x * 1.08, "maxY": max_y * 1.15}
 
 
-def compute_focused_plot_bounds(params: Dict[str, float]) -> Dict[str, float]:
+def compute_focused_plot_bounds(params: SimulationParams) -> PlotBounds:
     sampled_angles = sorted({
         max(5.0, params["angle"] - 10.0),
         params["angle"],
@@ -70,7 +120,7 @@ def compute_focused_plot_bounds(params: Dict[str, float]) -> Dict[str, float]:
     return {"maxX": max_x * 1.1, "maxY": max_y * 1.18}
 
 
-def serialize_drag_result(result: Dict[str, object]) -> Dict[str, object]:
+def serialize_drag_result(result: dict[str, Any]) -> SerializedDragResult:
     points = [
         {
             "x": point["x"],
@@ -120,7 +170,7 @@ def serialize_drag_result(result: Dict[str, object]) -> Dict[str, object]:
     }
 
 
-PLOT_REFERENCE_SCENARIOS = [
+PLOT_REFERENCE_SCENARIOS: list[SimulationParams] = [
     DEFAULT_SIMULATION_PARAMS,
     *REFERENCE_PRESETS.values(),
     *HISTORICAL_PLOT_REFERENCE_PARAMS.values(),
@@ -137,7 +187,7 @@ PLOT_REFERENCE_SCENARIOS = [
     },
 ]
 
-FIXED_PLOT_BOUNDS = {"maxX": 1.0, "maxY": 1.0}
+FIXED_PLOT_BOUNDS: PlotBounds = {"maxX": 1.0, "maxY": 1.0}
 for _plot_params in PLOT_REFERENCE_SCENARIOS:
     _sample_bounds = compute_plot_bounds(_plot_params)
     FIXED_PLOT_BOUNDS["maxX"] = max(FIXED_PLOT_BOUNDS["maxX"], _sample_bounds["maxX"])
@@ -145,7 +195,7 @@ for _plot_params in PLOT_REFERENCE_SCENARIOS:
 FIXED_PLOT_BOUNDS["maxX"] = max(2400.0, FIXED_PLOT_BOUNDS["maxX"])
 FIXED_PLOT_BOUNDS["maxY"] = max(850.0, FIXED_PLOT_BOUNDS["maxY"])
 
-HISTORICAL_GUN_PLOT_BOUNDS = {}
+HISTORICAL_GUN_PLOT_BOUNDS: dict[str, PlotBounds] = {}
 for _gun_key, _gun_params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
     _gun_bounds = compute_focused_plot_bounds(_gun_params)
     HISTORICAL_GUN_PLOT_BOUNDS[_gun_key] = {
@@ -154,8 +204,8 @@ for _gun_key, _gun_params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
     }
 
 
-def normalize_simulation_params(payload: Dict[str, object]) -> Dict[str, float | str]:
-    params: Dict[str, float | str] = {**DEFAULT_SIMULATION_PARAMS}
+def normalize_simulation_params(payload: dict[str, object]) -> SimulationParams:
+    params: SimulationParams = {**DEFAULT_SIMULATION_PARAMS}
     numeric_fields = (
         "angle",
         "speed",
@@ -203,7 +253,7 @@ def normalize_simulation_params(payload: Dict[str, object]) -> Dict[str, float |
     return params
 
 
-def simulation_response(payload: Dict[str, object]) -> Dict[str, object]:
+def simulation_response(payload: dict[str, object]) -> SimulationResponse:
     params = normalize_simulation_params(payload)
     current_gun = payload.get("currentGun")
     ideal = simulate_ideal_reference(params)

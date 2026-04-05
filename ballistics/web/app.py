@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+from typing import Any
 
 from ballistics.config import bootstrap_challenge_enabled, emit_runtime_warnings, runtime_configuration_error
 from ballistics.constants import ASSETS_DIR, MAX_REQUEST_BODY_BYTES, RESOLVED_ASSETS_DIR
@@ -42,6 +43,31 @@ def wsgi_response(
         headers.extend(extra_headers)
     start_response(status, headers)
     return [] if head_only else [body]
+
+
+def json_error_response(start_response, status: str, message: str):
+    return wsgi_response(
+        start_response,
+        status,
+        json.dumps({"error": message}).encode("utf-8"),
+        "application/json; charset=utf-8",
+    )
+
+
+def parse_json_object_body(environ, payload_name: str) -> dict[str, Any]:
+    try:
+        length = int(environ.get("CONTENT_LENGTH", "0") or "0")
+    except ValueError as exc:
+        raise ValueError("Invalid Content-Length.") from exc
+    if length < 0:
+        raise ValueError("Invalid Content-Length.")
+    if length > MAX_REQUEST_BODY_BYTES:
+        raise OverflowError("Request body too large.")
+
+    payload = json.loads(environ["wsgi.input"].read(length) if length > 0 else b"{}")
+    if not isinstance(payload, dict):
+        raise ValueError(f"{payload_name} payload must be a JSON object.")
+    return payload
 
 
 def create_application(html_page: str):
@@ -99,32 +125,14 @@ def create_application(html_page: str):
 
         if path == "/session/bootstrap" and method == "POST":
             if not is_origin_allowed(environ):
-                return wsgi_response(
-                    start_response,
-                    "403 Forbidden",
-                    json.dumps({"error": "Origin not allowed."}).encode("utf-8"),
-                    "application/json; charset=utf-8",
-                )
+                return json_error_response(start_response, "403 Forbidden", "Origin not allowed.")
             try:
-                length = int(environ.get("CONTENT_LENGTH", "0") or "0")
-            except ValueError:
-                return wsgi_response(
-                    start_response,
-                    "400 Bad Request",
-                    json.dumps({"error": "Invalid Content-Length."}).encode("utf-8"),
-                    "application/json; charset=utf-8",
-                )
-            if length < 0 or length > MAX_REQUEST_BODY_BYTES:
-                return wsgi_response(
-                    start_response,
-                    "400 Bad Request" if length < 0 else "413 Payload Too Large",
-                    json.dumps({"error": "Request body too large." if length > MAX_REQUEST_BODY_BYTES else "Invalid Content-Length."}).encode("utf-8"),
-                    "application/json; charset=utf-8",
-                )
+                payload = parse_json_object_body(environ, "Bootstrap")
+            except OverflowError as exc:
+                return json_error_response(start_response, "413 Payload Too Large", str(exc))
+            except ValueError as exc:
+                return json_error_response(start_response, "400 Bad Request", str(exc))
             try:
-                payload = json.loads(environ["wsgi.input"].read(length) if length > 0 else b"{}")
-                if not isinstance(payload, dict):
-                    raise ValueError("Bootstrap payload must be a JSON object.")
                 challenge_token = str(payload.get("token", ""))
                 answer = str(payload.get("answer", ""))
                 challenge = verify_signed_payload(challenge_token)
@@ -134,12 +142,7 @@ def create_application(html_page: str):
                 if challenge_is_expired(issued_at):
                     raise ValueError("Challenge expired.")
                 if not challenge_answer_is_correct(challenge, answer):
-                    return wsgi_response(
-                        start_response,
-                        "403 Forbidden",
-                        json.dumps({"error": "Incorrect answer."}).encode("utf-8"),
-                        "application/json; charset=utf-8",
-                    )
+                    return json_error_response(start_response, "403 Forbidden", "Incorrect answer.")
                 session_id = new_session_id()
                 return wsgi_response(
                     start_response,
@@ -149,42 +152,29 @@ def create_application(html_page: str):
                     extra_headers=[session_cookie_header(session_id)],
                 )
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
-                return wsgi_response(
-                    start_response,
-                    "400 Bad Request",
-                    json.dumps({"error": str(exc)}).encode("utf-8"),
-                    "application/json; charset=utf-8",
-                )
+                return json_error_response(start_response, "400 Bad Request", str(exc))
 
         if path == "/api/simulate" and method == "POST":
             if not (is_request_authorized(environ) or browser_session_authorized(environ)):
                 status = "401 Unauthorized"
                 log_simulation_request(environ, status)
-                return wsgi_response(start_response, status, json.dumps({"error": "Unauthorized."}).encode("utf-8"), "application/json; charset=utf-8")
+                return json_error_response(start_response, status, "Unauthorized.")
             if not is_origin_allowed(environ):
                 status = "403 Forbidden"
                 log_simulation_request(environ, status)
-                return wsgi_response(start_response, status, json.dumps({"error": "Origin not allowed."}).encode("utf-8"), "application/json; charset=utf-8")
+                return json_error_response(start_response, status, "Origin not allowed.")
             try:
-                length = int(environ.get("CONTENT_LENGTH", "0") or "0")
-            except ValueError:
-                status = "400 Bad Request"
-                log_simulation_request(environ, status)
-                return wsgi_response(start_response, status, json.dumps({"error": "Invalid Content-Length."}).encode("utf-8"), "application/json; charset=utf-8")
-            if length < 0:
-                status = "400 Bad Request"
-                log_simulation_request(environ, status)
-                return wsgi_response(start_response, status, json.dumps({"error": "Invalid Content-Length."}).encode("utf-8"), "application/json; charset=utf-8")
-            if length > MAX_REQUEST_BODY_BYTES:
+                payload = parse_json_object_body(environ, "Simulation")
+            except OverflowError as exc:
                 status = "413 Payload Too Large"
                 log_simulation_request(environ, status)
-                return wsgi_response(start_response, status, json.dumps({"error": "Request body too large."}).encode("utf-8"), "application/json; charset=utf-8")
+                return json_error_response(start_response, status, str(exc))
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                status = "400 Bad Request"
+                log_simulation_request(environ, status)
+                return json_error_response(start_response, status, str(exc))
 
             try:
-                raw_body = environ["wsgi.input"].read(length) if length > 0 else b"{}"
-                payload = json.loads(raw_body)
-                if not isinstance(payload, dict):
-                    raise ValueError("Simulation payload must be a JSON object.")
                 response_body = json.dumps(simulation_response(payload)).encode("utf-8")
                 status = "200 OK"
                 log_simulation_request(environ, status)
@@ -192,7 +182,7 @@ def create_application(html_page: str):
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 status = "400 Bad Request"
                 log_simulation_request(environ, status)
-                return wsgi_response(start_response, status, json.dumps({"error": str(exc)}).encode("utf-8"), "application/json; charset=utf-8")
+                return json_error_response(start_response, status, str(exc))
 
         return wsgi_response(start_response, "404 Not Found", b"Not Found", "text/plain; charset=utf-8", head_only=head_only)
 

@@ -79,7 +79,7 @@ But the aerodynamic terms are derived dynamically:
 - Mach number from instantaneous projectile speed and local speed of sound
 - Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
 - base drag coefficient from the Haider-Levenspiel sphere-limit correlation for round shot
-- a polynomial sphere Mach correction applied as `Cd = Cd_base(Re) * (1 + Ma^2/4 + Ma^4/40)`
+- a polynomial sphere Mach correction from `Eric Loth` applied as `Cd = Cd_base(Re) * (1 + Ma^2/4 + Ma^4/40)`
 - shell-like projectiles can use a standard drag-function plus ballistic-coefficient path (`G1` or `G7`), with the current historical shell presets using `G7`
 - projectile area from diameter
 - projectile mass from material density and a shape-aware projectile volume approximation

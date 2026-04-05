@@ -1,15 +1,16 @@
 import math
 import unittest
 
-from main import (
+from ballistics.constants import (
     AIR_GAS_CONSTANT,
     AIR_HEAT_CAPACITY_RATIO,
     G,
     MIN_PRESSURE_ATM,
     SUTHERLAND_MU0,
+)
+from ballistics.physics.drag import (
     aerodynamic_state,
     air_density_from_conditions,
-    analytical_metrics,
     drag_coefficient_sphere,
     dynamic_viscosity_air,
     kelvin_from_celsius,
@@ -20,10 +21,10 @@ from main import (
     projectile_volume_from_diameter,
     reynolds_number,
     simulate_drag_reference,
-    simulate_ideal_reference,
     speed_of_sound_air,
     sphere_area_from_diameter,
 )
+from ballistics.physics.ideal import analytical_metrics, simulate_ideal_reference
 
 
 class AnalyticalMetricsTests(unittest.TestCase):
