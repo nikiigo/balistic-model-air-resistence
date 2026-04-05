@@ -5,11 +5,14 @@ import hashlib
 import hmac
 import json
 import secrets
+import time
 from http.cookies import SimpleCookie
 from typing import Any
 
 from ballistics.config import configured_allowed_origins, configured_api_key, configured_session_secret, public_mode_enabled
 from ballistics.constants import SESSION_COOKIE_NAME
+
+SESSION_PAYLOAD_KIND = "browser_session"
 
 
 def is_request_authorized(environ) -> bool:
@@ -44,11 +47,26 @@ def parse_request_cookies(environ) -> SimpleCookie:
 
 
 def current_session_id(environ) -> str | None:
+    session_payload = current_session_payload(environ)
+    if session_payload is None:
+        return None
+    session_id = session_payload.get("sid")
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    return session_id
+
+
+def current_session_payload(environ) -> dict[str, Any] | None:
     cookies = parse_request_cookies(environ)
     morsel = cookies.get(SESSION_COOKIE_NAME)
     if morsel is None:
         return None
-    return morsel.value
+    payload = verify_signed_payload(morsel.value)
+    if payload is None:
+        return None
+    if payload.get("kind") != SESSION_PAYLOAD_KIND:
+        return None
+    return payload
 
 
 def csrf_token_for_session(session_id: str) -> str:
@@ -61,13 +79,21 @@ def new_session_id() -> str:
 
 def session_cookie_header(session_id: str) -> tuple[str, str]:
     cookie = SimpleCookie()
-    cookie[SESSION_COOKIE_NAME] = session_id
+    cookie[SESSION_COOKIE_NAME] = sign_browser_session(session_id)
     cookie[SESSION_COOKIE_NAME]["path"] = "/"
     cookie[SESSION_COOKIE_NAME]["httponly"] = True
     cookie[SESSION_COOKIE_NAME]["samesite"] = "Lax"
     if public_mode_enabled():
         cookie[SESSION_COOKIE_NAME]["secure"] = True
     return "Set-Cookie", cookie.output(header="").strip()
+
+
+def sign_browser_session(session_id: str) -> str:
+    return sign_payload({
+        "kind": SESSION_PAYLOAD_KIND,
+        "sid": session_id,
+        "issuedAt": int(time.time()),
+    })
 
 
 def sign_payload(payload: dict[str, Any]) -> str:

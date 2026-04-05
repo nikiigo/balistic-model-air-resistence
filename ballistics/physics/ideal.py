@@ -43,7 +43,8 @@ def simulate_ideal_reference(params: IdealSimulationParams) -> Dict[str, object]
         t += step
 
     peak_time = 0.0 if G <= 0.0 else max(vy / G, 0.0)
-    points.append({"x": metrics["range"], "y": 0.0, "t": flight_time, "vx": vx, "vy": -vy})
+    if flight_time > 0.0:
+        points.append({"x": metrics["range"], "y": 0.0, "t": flight_time, "vx": vx, "vy": -vy})
     return {
         "points": points,
         "metrics": {

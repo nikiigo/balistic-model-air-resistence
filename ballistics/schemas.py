@@ -204,7 +204,6 @@ def serialize_drag_result(result: DragSimulationResult) -> SerializedDragResult:
         "aero": {
             "projectileMass": aero["projectile_mass"],
             "projectileShape": aero["projectile_shape"],
-            "sphericity": aero["sphericity"],
             "dragModel": aero["drag_model"],
             "ballisticCoefficient": aero["ballistic_coefficient"],
             "airDensity": aero["air_density"],
