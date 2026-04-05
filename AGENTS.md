@@ -44,6 +44,14 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Pressure is clamped to the supported floor `MIN_PRESSURE_ATM = 0.001`.
 - When changing physics behavior, add or update regression tests in [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py).
 
+## Validation Snapshot
+
+- The README's `Validation Snapshot` table is backed by regression tests in [`tests/test_physics.py`](/home/nikiigo/balistic-model-air-resistence/tests/test_physics.py) under `ValidationSnapshotRegressionTests`.
+- The Napoleon, Ordnance, and Parrott snapshot checks are created by copying the corresponding entries from `HISTORICAL_PLOT_REFERENCE_PARAMS` and overriding only the comparison angle to `5.0` degrees.
+- The M1841 6-pounder snapshot is not a named preset. It is reproduced directly from the documented comparison setup: `5°`, `1450 ft/s`, `6 lb` round shot, modeled as a sphere with diameter `0.093218 m` and mass `2.72155 kg`.
+- Snapshot assertions currently compare modeled range in yards after converting from meters with `1.0936132983377078`.
+- If physics changes move one of these ranges, update both the regression test and the README table in the same change. Do not leave the README snapshot as a stale hand-maintained number.
+
 ## Review Hotspots
 
 - Authentication and browser session handling in [`ballistics/web/auth.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/auth.py) and [`ballistics/web/app.py`](/home/nikiigo/balistic-model-air-resistence/ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
