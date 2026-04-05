@@ -247,8 +247,8 @@ Deployment notes:
 
 Optional hardening environment variables:
 
-- `BALLISTICS_PUBLIC_MODE`: set to `1` to enable internet-facing safety checks; in this mode the app refuses to serve unless `BALLISTICS_API_KEY`, `BALLISTICS_SESSION_SECRET`, and `BALLISTICS_ALLOWED_ORIGINS` are configured
-- `BALLISTICS_API_KEY`: if set, `/api/simulate` requires the `X-API-Key` header to match this value
+- `BALLISTICS_PUBLIC_MODE`: set to `1` to enable internet-facing safety checks; in this mode the app refuses to serve unless `BALLISTICS_SESSION_SECRET` and `BALLISTICS_ALLOWED_ORIGINS` are configured
+- `BALLISTICS_API_KEY`: optional shared secret for trusted non-browser or upstream callers; it is not required for the public browser-session flow
 - `BALLISTICS_SESSION_SECRET`: HMAC secret used to issue browser session cookies and CSRF tokens
 - `BALLISTICS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call `/api/simulate` when an `Origin` header is present
 

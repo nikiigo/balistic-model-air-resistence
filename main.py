@@ -3019,8 +3019,6 @@ _runtime_warning_flags = {
 
 
 def runtime_configuration_error() -> str | None:
-    if public_mode_enabled() and configured_api_key() is None:
-        return f"{API_KEY_ENV_VAR} must be set when {PUBLIC_MODE_ENV_VAR}=1."
     if public_mode_enabled() and not os.environ.get(SESSION_SECRET_ENV_VAR, "").strip():
         return f"{SESSION_SECRET_ENV_VAR} must be set when {PUBLIC_MODE_ENV_VAR}=1."
     if public_mode_enabled() and not configured_allowed_origins():
