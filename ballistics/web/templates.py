@@ -1009,13 +1009,13 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     const defaults = {
-      angle: 45,
-      speed: 55,
-      materialDensity: materialDensityFromMassAndDiameter(1, 0.113),
+      angle: 12,
+      speed: 439,
+      materialDensity: materialDensityFromMassAndDiameter(5.44, 0.117),
       temperature: 15,
       pressure: 1,
-      diameter: 0.113,
-      dt: 0.016,
+      diameter: 0.117,
+      dt: 0.012,
       projectileShape: "sphere",
       sphericity: 1,
       volumeFactor: 1,
@@ -1397,7 +1397,7 @@ HTML_PAGE = """<!DOCTYPE html>
       stableBounds: null,
       csrfToken: INITIAL_CSRF_TOKEN,
       bootstrapChallenge: BOOTSTRAP_CHALLENGE,
-      currentGun: null,
+      currentGun: "napoleon",
       presetModified: false,
       scaleMode: "stable",
       hoveredGun: null,
@@ -1507,9 +1507,20 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     function setGunMode(gunKey) {
+      const gunParams = historicalGuns[gunKey].params;
+      const normalizedParams = gunParams.projectileShape === "shell"
+        ? gunParams
+        : {
+            ...gunParams,
+            projectileShape: "sphere",
+            sphericity: 1,
+            volumeFactor: 1,
+            dragModel: CUSTOM_SHELL_DRAG_MODEL,
+            ballisticCoefficient: 0
+          };
       state.currentGun = gunKey;
       state.presetModified = false;
-      syncControls(historicalGuns[gunKey].params);
+      syncControls(normalizedParams);
       applyGunMode();
     }
 
@@ -1724,12 +1735,12 @@ HTML_PAGE = """<!DOCTYPE html>
       const dragAero = state.drag.aero;
       rows.push(metricCard("Ideal range", state.ideal.metrics.range, "m", `Time ${state.ideal.metrics.flightTime.toFixed(2)} s`));
       rows.push(metricCard("Ideal max height", state.ideal.metrics.maxHeight, "m", `Impact speed ${state.ideal.metrics.finalSpeed.toFixed(2)} m/s`));
+      rows.push(metricCard("Time step", state.params.dt, "s", "Smaller steps improve stability but cost more frames."));
       rows.push(metricCard("Drag range", state.drag.metrics.range, "m", `Time ${state.drag.metrics.flightTime.toFixed(2)} s`));
       rows.push(metricCard("Drag max height", state.drag.metrics.maxHeight, "m", `Impact speed ${state.drag.metrics.finalSpeed.toFixed(2)} m/s`));
       const deltaRange = state.ideal.metrics.range - state.drag.metrics.range;
       const angleHint = dragAero.airDensity > 0 ? "Lower angles often win with drag." : "Vacuum restores the 45° symmetry.";
       rows.push(metricCard("Range loss to drag", deltaRange, "m", angleHint));
-      rows.push(metricCard("Time step", state.params.dt, "s", "Smaller steps improve stability but cost more frames."));
       metricsEl.innerHTML = rows.join("");
     }
 
@@ -2053,8 +2064,7 @@ HTML_PAGE = """<!DOCTYPE html>
       requestAnimationFrame(animate);
     });
     resetBtn.addEventListener("click", () => {
-      clearGunMode();
-      syncControls(defaults);
+      setGunMode("napoleon");
       recompute();
     });
     toggleControlsBtn.addEventListener("click", () => {
@@ -2102,8 +2112,7 @@ HTML_PAGE = """<!DOCTYPE html>
     updateScaleButtons();
     updateShapeControls();
     updateBootstrapGate();
-    syncControls(defaults);
-    applyGunMode();
+    setGunMode("napoleon");
     if (!bootstrapRequired()) {
       launch();
     }

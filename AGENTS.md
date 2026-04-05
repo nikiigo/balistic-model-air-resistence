@@ -57,6 +57,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 - Authentication and browser session handling in [`ballistics/web/auth.py`](ballistics/web/auth.py) and [`ballistics/web/app.py`](ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
 - The frontend is embedded in one large HTML template. Small behavior changes can require both JS updates and contract-test updates.
+- The homepage default shot and the metric-card ordering under the graph are hardcoded in [`ballistics/web/templates.py`](ballistics/web/templates.py), not derived from backend presets automatically. The relevant places are the `defaults` object / initial state wiring and `renderMetrics()`.
 - Plot-bounds behavior is partly precomputed in [`ballistics/schemas.py`](ballistics/schemas.py); changes there can affect historical presets and graph scaling.
 
 ## Change Checklist

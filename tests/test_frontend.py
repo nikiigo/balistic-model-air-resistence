@@ -54,6 +54,32 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("function simulateDrag(params)", HTML_PAGE)
         self.assertNotIn("function simulateIdeal(params)", HTML_PAGE)
 
+    def test_homepage_defaults_to_napoleon_gun_mode(self) -> None:
+        self.assertIn('currentGun: "napoleon"', HTML_PAGE)
+        self.assertIn("angle: 12,", HTML_PAGE)
+        self.assertIn("speed: 439,", HTML_PAGE)
+        self.assertIn("diameter: 0.117,", HTML_PAGE)
+        self.assertIn('setGunMode("napoleon");', HTML_PAGE)
+        self.assertNotIn("syncControls(defaults);", HTML_PAGE)
+
+    def test_selecting_a_round_shot_preset_normalizes_shape_back_to_sphere(self) -> None:
+        self.assertIn('projectileShape: "sphere"', HTML_PAGE)
+        self.assertIn('ballisticCoefficient: 0', HTML_PAGE)
+        self.assertIn("syncControls(normalizedParams);", HTML_PAGE)
+
+    def test_metric_cards_render_in_requested_order(self) -> None:
+        ideal_range_index = HTML_PAGE.index('metricCard("Ideal range"')
+        ideal_max_height_index = HTML_PAGE.index('metricCard("Ideal max height"')
+        time_step_index = HTML_PAGE.index('metricCard("Time step"')
+        drag_max_height_index = HTML_PAGE.index('metricCard("Drag max height"')
+        drag_range_index = HTML_PAGE.index('metricCard("Drag range"')
+        range_loss_index = HTML_PAGE.index('metricCard("Range loss to drag"')
+        self.assertLess(ideal_range_index, ideal_max_height_index)
+        self.assertLess(ideal_max_height_index, time_step_index)
+        self.assertLess(time_step_index, drag_range_index)
+        self.assertLess(drag_range_index, drag_max_height_index)
+        self.assertLess(drag_max_height_index, range_loss_index)
+
     def test_historic_library_includes_siege_engines(self) -> None:
         self.assertIn("Counterweight trebuchet", HTML_PAGE)
         self.assertIn("Mangonel / traction catapult", HTML_PAGE)
