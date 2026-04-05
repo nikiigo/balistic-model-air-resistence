@@ -172,7 +172,6 @@ Example production-style Gunicorn command bound to localhost:
 
 ```bash
 BALLISTICS_PUBLIC_MODE=1 \
-BALLISTICS_API_KEY=change-me \
 BALLISTICS_SESSION_SECRET=change-this-too \
 BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example \
 .venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 30 main:application
@@ -190,9 +189,10 @@ Type=simple
 User=YOUR_USER
 WorkingDirectory=/absolute/path/to/balistic-model-air-resistence
 Environment=BALLISTICS_PUBLIC_MODE=1
-Environment=BALLISTICS_API_KEY=change-me
 Environment=BALLISTICS_SESSION_SECRET=change-this-too
 Environment=BALLISTICS_ALLOWED_ORIGINS=https://your-domain.example
+# Optional:
+# Environment=BALLISTICS_API_KEY=change-me
 ExecStart=/absolute/path/to/balistic-model-air-resistence/.venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 30 main:application
 Restart=always
 RestartSec=3
@@ -274,7 +274,7 @@ Run the automated checks:
 
 ```bash
 python3 -m unittest
-python3 -m py_compile main.py test_main.py
+python3 -m py_compile main.py tests/test_physics.py tests/test_wsgi.py tests/test_frontend.py
 ```
 
 Useful manual checks:
@@ -292,7 +292,9 @@ Useful manual checks:
 - [main.py](main.py): WSGI application, local dev server entrypoint, HTML, CSS, JavaScript, and Python physics helpers
 - [requirements.txt](requirements.txt): runtime Python dependency pins
 - browser rendering calls the local `/api/simulate` endpoint for ideal and drag trajectories
-- [test_main.py](test_main.py): analytical and aerodynamic regression tests
+- [tests/test_physics.py](tests/test_physics.py): analytical and aerodynamic regression tests
+- [tests/test_wsgi.py](tests/test_wsgi.py): WSGI, auth, and hardening tests
+- [tests/test_frontend.py](tests/test_frontend.py): embedded frontend contract checks
 - [assets/guns](assets/guns): bundled historical launcher images used by the local library
 - [assets/screenshots](assets/screenshots): README screenshot assets
 
