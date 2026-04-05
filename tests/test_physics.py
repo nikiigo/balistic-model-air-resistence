@@ -21,7 +21,6 @@ from main import (
     reynolds_number,
     simulate_drag_reference,
     simulate_ideal_reference,
-    sphere_drag_coefficient_from_source_mach,
     speed_of_sound_air,
     sphere_area_from_diameter,
 )
@@ -77,41 +76,45 @@ class AerodynamicHelpersTests(unittest.TestCase):
         speed = speed_of_sound_air(15.0) * 0.75
         self.assertAlmostEqual(mach_number(speed, 15.0), 0.75, places=9)
 
-    def test_source_based_sphere_mach_table_interpolates_expected_values(self) -> None:
-        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(0.6), 0.20, places=9)
-        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(1.0), 0.92, places=9)
-        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(0.75), 0.40, places=9)
-        self.assertAlmostEqual(sphere_drag_coefficient_from_source_mach(6.0), 0.88, places=9)
+    def test_sphere_mach_multiplier_matches_loth_polynomial(self) -> None:
+        base = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+        transonic = aerodynamic_state(speed=speed_of_sound_air(15.0), temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
+        expected_multiplier = 1.0 + 0.25 + 0.025
+        self.assertAlmostEqual(transonic["mach"], 1.0, places=9)
+        self.assertAlmostEqual(transonic["drag_coefficient"] / transonic["base_drag_coefficient"], expected_multiplier, places=9)
+        self.assertGreater(transonic["drag_coefficient"], base["drag_coefficient"])
 
     def test_sphere_area_from_diameter(self) -> None:
         self.assertAlmostEqual(sphere_area_from_diameter(0.1), math.pi * 0.01 / 4.0, places=9)
 
     def test_drag_coefficient_piecewise_regimes(self) -> None:
         reynolds = 100.0
-        re_over_5 = reynolds / 5.0
-        re_over_263k = reynolds / 263000.0
+        phi = 1.0
+        a = math.exp(2.3288 - 6.4581 * phi + 2.4486 * phi**2)
+        b = 0.0964 + 0.5565 * phi
+        c = math.exp(4.9050 - 13.8944 * phi + 18.4222 * phi**2 - 10.2599 * phi**3)
+        d = math.exp(1.4681 + 12.2584 * phi - 20.7322 * phi**2 + 15.8855 * phi**3)
         expected = (
-            (24.0 / reynolds)
-            + (2.6 * re_over_5 / (1.0 + (re_over_5 ** 1.52)))
-            + (0.411 * (re_over_263k ** -7.94) / (1.0 + (re_over_263k ** -8.0)))
-            + ((reynolds ** 0.8) / 461000.0)
+            (24.0 / reynolds) * (1.0 + a * (reynolds**b))
+            + ((c * reynolds) / (d + reynolds))
         )
         self.assertAlmostEqual(drag_coefficient_sphere(reynolds), expected, places=9)
         self.assertGreater(drag_coefficient_sphere(0.05), 100.0)
         self.assertGreater(drag_coefficient_sphere(5000.0), 0.1)
 
-    def test_sphere_drag_uses_morrison_up_to_one_million_reynolds(self) -> None:
+    def test_sphere_drag_uses_haider_levenspiel_sphere_limit(self) -> None:
         reynolds = 1_000_000.0
-        re_over_5 = reynolds / 5.0
-        re_over_263k = reynolds / 263000.0
+        phi = 1.0
+        a = math.exp(2.3288 - 6.4581 * phi + 2.4486 * phi**2)
+        b = 0.0964 + 0.5565 * phi
+        c = math.exp(4.9050 - 13.8944 * phi + 18.4222 * phi**2 - 10.2599 * phi**3)
+        d = math.exp(1.4681 + 12.2584 * phi - 20.7322 * phi**2 + 15.8855 * phi**3)
         expected = (
-            (24.0 / reynolds)
-            + (2.6 * re_over_5 / (1.0 + (re_over_5 ** 1.52)))
-            + (0.411 * (re_over_263k ** -7.94) / (1.0 + (re_over_263k ** -8.0)))
-            + ((reynolds ** 0.8) / 461000.0)
+            (24.0 / reynolds) * (1.0 + a * (reynolds**b))
+            + ((c * reynolds) / (d + reynolds))
         )
         self.assertAlmostEqual(drag_coefficient_sphere(reynolds), expected, places=9)
-        self.assertAlmostEqual(drag_coefficient_sphere(1_000_001.0), 0.2, places=9)
+        self.assertGreater(drag_coefficient_sphere(1_000_001.0), 0.4)
 
     def test_reynolds_number_zeroes_for_non_physical_inputs(self) -> None:
         self.assertEqual(reynolds_number(0.0, 10.0, 0.1, 1.8e-5), 0.0)
@@ -219,15 +222,18 @@ class DragSimulationRegressionTests(unittest.TestCase):
         subsonic = aerodynamic_state(speed=200.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
         transonic = aerodynamic_state(speed=340.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
         supersonic = aerodynamic_state(speed=500.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
-        faster_supersonic = aerodynamic_state(speed=700.0, temperature_c=15.0, pressure_atm=1.0, diameter=0.1)
 
         self.assertLess(subsonic["mach"], 0.7)
         self.assertGreater(transonic["mach"], 0.95)
-        self.assertAlmostEqual(subsonic["drag_coefficient"], subsonic["base_drag_coefficient"], places=9)
+        expected_subsonic_multiplier = 1.0 + ((subsonic["mach"] ** 2) / 4.0) + ((subsonic["mach"] ** 4) / 40.0)
+        self.assertAlmostEqual(
+            subsonic["drag_coefficient"] / subsonic["base_drag_coefficient"],
+            expected_subsonic_multiplier,
+            places=9,
+        )
         self.assertGreater(transonic["drag_coefficient"], transonic["base_drag_coefficient"])
         self.assertGreater(transonic["drag_coefficient"], subsonic["drag_coefficient"])
         self.assertGreater(supersonic["drag_coefficient"], transonic["drag_coefficient"])
-        self.assertLess(faster_supersonic["drag_coefficient"], supersonic["drag_coefficient"])
 
     def test_artillery_shell_launch_drag_coefficient_stays_in_reasonable_range(self) -> None:
         shell = aerodynamic_state(

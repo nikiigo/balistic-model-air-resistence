@@ -78,15 +78,15 @@ But the aerodynamic terms are derived dynamically:
 - speed of sound from the ideal-gas relation for air
 - Mach number from instantaneous projectile speed and local speed of sound
 - Reynolds number from instantaneous velocity, projectile diameter, density, and viscosity
-- base drag coefficient from the Morrison sphere `Cd(Re)` correlation for round shot up to `Re = 1e6`, with a fixed high-Re fallback of `Cd = 0.2` above that
-- a source-based sphere Mach correction derived from approximate digitization of the sphere curve in NASA-TM-109016, figures 2 and 14
+- base drag coefficient from the Haider-Levenspiel sphere-limit correlation for round shot
+- a polynomial sphere Mach correction applied as `Cd = Cd_base(Re) * (1 + Ma^2/4 + Ma^4/40)`
 - shell-like projectiles can use a standard drag-function plus ballistic-coefficient path (`G1` or `G7`), with the current historical shell presets using `G7`
 - projectile area from diameter
 - projectile mass from material density and a shape-aware projectile volume approximation
 
 In implementation terms, the two projectile families work differently:
 
-- round shot spheres: compute a base `Cd(Re)` from the Morrison correlation, then scale that base value with the source-based Mach correction
+- round shot spheres: compute a base `Cd(Re)` from the Haider-Levenspiel sphere-limit correlation, then scale that base value with the Mach correction `1 + Ma^2/4 + Ma^4/40`
 - shell-like projectiles: compute drag directly from the standard `G1/G7` drag-function plus ballistic coefficient (`BC`)
 
 For shell-like projectiles, Reynolds number and Mach number are still reported as diagnostics, but they are not the primary inputs to the shell drag law. The displayed shell drag coefficient is an equivalent `Cd` derived afterward from the computed drag force:
@@ -97,10 +97,15 @@ So for shells, the aerodynamic driver is the `G1/G7 + BC` model, not a direct `C
 
 The shell drag-function shape is data-fitted through the standard `G1/G7` model, but the preset ballistic-coefficient values remain approximate tuning inputs rather than source-verified firing-table BCs for each historical round.
 
-For round-shot compressibility, the simulator now uses a sparse `Mach -> Cd` table inferred from the sphere plots in NASA-TM-109016 rather than the older hand-tuned multiplier coefficients. Those table values are approximate digitizations from the report figures, not an official machine-readable NASA table:
+For round shot, the base Reynolds-side correlation is the Haider-Levenspiel sphere-limit form:
 
-- NASA-TM-109016, *Aerodynamics of a sphere and an oblate spheroid for Mach numbers from 0.6 to 10.5 including some effects of test conditions*  
-  https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19940008699.pdf
+- A. Haider, O. Levenspiel, *Drag Coefficient and Terminal Velocity of Spherical and Non-Spherical Particles*, Powder Technology 58 (1989) 63-70. DOI: https://doi.org/10.1016/0032-5910(89)80008-7
+
+This correlation is also widely adopted in engineering software and multiphase-flow practice, including implementations in Fluent, OpenFOAM, and EDEM. In the software documentation checked for this project, we did not find a prominently stated hard Reynolds-number cutoff for the Haider-Levenspiel model of the kind explicitly stated in Morrison's 2016 sphere note. Even so, using it as the Reynolds-side base drag law for historical round-shot ballistics remains a modeling choice rather than a direct validation of full compressible artillery flight by Haider and Levenspiel themselves.
+
+For round-shot compressibility, the simulator uses the polynomial Mach correction requested from Eric Loth's review of drag correlations for non-spherical particles:
+
+- Eric Loth, *Drag of Non-Spherical Solid Particles of Regular and Irregular Shape*, Powder Technology 182 (2008) 342-353. DOI: https://doi.org/10.1016/j.powtec.2007.06.001
 
 The flight model is a 2D point-mass model in horizontal distance and height.
 
@@ -112,20 +117,22 @@ The table below compares the current model against a few historical artillery re
 
 | Launcher | Comparison setup | Model range | Historical reference | Error |
 | --- | --- | ---: | ---: | ---: |
-| M1857 12-pounder Napoleon | `5°` elevation, round shot | `1514 yd` | `1680 yd` | `-9.9%` |
+| M1841 6-pounder gun | `5°` elevation, round shot | `1464 yd` | `1523 yd` | `-3.9%` |
+| M1857 12-pounder Napoleon | `5°` elevation, round shot | `1622 yd` | `1680 yd` | `-3.4%` |
 | 3-inch Ordnance Rifle | `5°` elevation, shell preset | `1539 yd` | `1800 yd` effective range | `-14.5%` |
 | 10-pounder Parrott rifle | `5°` elevation, shell preset | `1528 yd` | `1800 yd` effective range | `-15.1%` |
 
 Reference sources:
 
 - Vicksburg National Military Park, table of fire for the Light 12-Pounder Gun, Model 1857: https://www.nps.gov/vick/learn/education/mathematics-range-chart.htm
+- Antietam on the Web, Model 1841 6-pounder gun data (`5°`, `1450 ft/s`, `1523 yd`): https://antietam.aotw.org/weapons.php?weapon_id=12
 - NPS Shenandoah artillery overview with effective-range summaries for the 3-inch Ordnance Rifle and 10-pounder Parrott: https://www.nps.gov/articles/000/civil-war-weapons-in-the-shenandoah-valley.htm
 
 Caveat:
 
 - the Napoleon comparison uses an explicit table-of-fire entry, while the Ordnance and Parrott values above are NPS effective-range summaries rather than one matching firing table
 - some preset muzzle velocities and BC values are still modeled approximations, so this should be treated as a first-pass validation check rather than a final calibration
-- at the moment, the simulator is better validated for round-shot sphere projectiles than for elongated shell projectiles
+- at the moment, the simulator is noticeably better validated for round-shot sphere projectiles than for elongated shell projectiles
 
 ## Output Metrics
 
@@ -149,11 +156,11 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 ## Assumptions and Limits
 
 - 2D planar point-mass motion only
-- round shot uses a spherical projectile model
+- round shot uses a spherical projectile model with a Haider-Levenspiel Reynolds-side base drag correlation and a separate Mach correction
 - shell presets now use a `G7` ballistic-coefficient model by default
 - the `G1/G7` drag-function shapes are standard fitted curves, but the preset ballistic-coefficient values are still approximate and not all tied to historical firing tables
 - pressure is clamped to a minimum supported value of `0.001 atm`
-- sphere compressibility uses a sparse source-based Mach table inferred from NASA-TM-109016, not a full `Cd(Re, Ma)` surface
+- sphere compressibility uses a polynomial Mach correction on top of the Reynolds-based base drag, not a full `Cd(Re, Ma)` surface
 - no wind
 - no spin or Magnus effect
 - no terrain modeling
