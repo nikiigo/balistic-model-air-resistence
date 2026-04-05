@@ -1261,6 +1261,24 @@ HTML_PAGE = """<!DOCTYPE html>
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gribeauval_cannon_de_12_An_2_de_la_Republique.jpg" }
         ]
       },
+      m1841SixPounder: {
+        name: "M1841 6-pounder gun",
+        subtitle: "United States, 1841",
+        image: "/assets/guns/english-saker-fort-nelson.jpg",
+        imageAlt: "Representative light field gun used as an image stand-in for the M1841 6-pounder",
+        imagePosition: "center center",
+        diameterLabel: "93.2 mm",
+        projectile: "6 lb round shot (2.72 kg)",
+        muzzleVelocity: "1,450 ft/s (442 m/s)",
+        range: "1,451 yd at 5°",
+        service: "Mexican-American War, early American Civil War",
+        note: "This preset follows the historical comparison setup used in the validation snapshot: a 6-pound round shot at 5 degrees elevation and 1,450 ft/s. The repository does not include a dedicated M1841 image, so this entry uses a representative light field gun image.",
+        params: { angle: 5, speed: 1450 * 0.3048, materialDensity: materialDensityFromMassAndDiameter(2.72155, 0.093218), temperature: 15, pressure: 1, diameter: 0.093218, dt: 0.01 },
+        sources: [
+          { label: "Specs", url: "https://antietam.aotw.org/weapons.php?weapon_id=12" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker_at_Fort_Nelson.jpg" }
+        ]
+      },
       paixhans: {
         name: "Paixhans gun",
         subtitle: "France, 1823",
