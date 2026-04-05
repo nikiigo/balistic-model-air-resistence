@@ -57,6 +57,7 @@ Included presets cover:
 - Falconet
 - Demi-cannon
 - Canon de 12 Gribeauval
+- M1841 6-pounder gun
 - M1857 12-pounder Napoleon
 - 3-inch Ordnance Rifle
 - RBL 12-pounder 8 cwt Armstrong gun
