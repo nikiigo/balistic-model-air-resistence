@@ -121,7 +121,7 @@ RK4 is used here because the drag trajectory is governed by nonlinear ordinary d
 
 ## Validation Snapshot
 
-The table below compares the current model against a few historical artillery reference points that are close to presets in the simulator. These are spot checks, not a full firing-table calibration. The listed model ranges are also covered by regression tests so the documented snapshot stays aligned with the solver.
+The table below compares the current model against a few historical artillery reference points that are close to presets in the simulator. These are spot checks, not a full firing-table calibration. The listed model ranges are also covered by regression tests so the documented snapshot stays aligned with the solver. The M1841 6-pounder row now uses the named `m1841SixPounder` preset directly.
 
 | Launcher | Comparison setup | Model range | Historical reference | Error |
 | --- | --- | ---: | ---: | ---: |
