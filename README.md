@@ -31,7 +31,7 @@ The simulator UI currently exposes:
 - projectile diameter
 - integration time step
 
-The air-pressure control is limited to `0.001 atm` through `1.2 atm` because the current drag correlations are not treated as valid below that floor.
+The air-pressure control is limited to `0.001 atm` through `2.0 atm`, matching the current browser and server-side validation range while still respecting the low-pressure floor used by the drag solver.
 
 Material density also has quick shortcuts:
 
@@ -93,13 +93,15 @@ In implementation terms, the two projectile families work differently:
 - shell-like projectiles: compute drag directly from the standard `G1/G7` drag-function plus ballistic coefficient (`BC`)
 - shell preset metadata may still include geometric descriptors such as `sphericity`, but in the current shell solver those descriptors do not independently modify drag beyond what is already represented by the chosen drag function and ballistic coefficient
 
+If the user manually switches the UI to `Shell`, the current default shell path is `G7` with ballistic coefficient `0.22` unless a historical shell preset supplies different shell parameters.
+
 For shell-like projectiles, Reynolds number and Mach number are still reported as diagnostics, but they are not the primary inputs to the shell drag law. The displayed shell drag coefficient is an equivalent `Cd` derived afterward from the computed drag force:
 
 - `Cd_equivalent = 2 * Fd / (rho * A * v^2)`
 
 So for shells, the aerodynamic driver is the `G1/G7 + BC` model, not a direct `Cd(Re, Ma)` correlation.
 
-The shell drag-function shape is data-fitted through the standard `G1/G7` model, but the preset ballistic-coefficient values remain approximate tuning inputs rather than source-verified firing-table BCs for each historical round.
+The shell drag-function shape is data-fitted through the standard `G1/G7` model, but the preset ballistic-coefficient values remain approximate tuning inputs rather than source-verified firing-table BCs for each historical round. In the current repository comparisons for the 3-inch Ordnance Rifle and 10-pounder Parrott, `G7` produces materially smaller range error than `G1`, which is why the historical shell presets are configured on `G7`.
 
 For round shot, the base Reynolds-side correlation is the Haider-Levenspiel sphere-limit form:
 
@@ -144,13 +146,14 @@ The current UI reports:
 
 - ideal range
 - ideal maximum height
+- time step
 - drag range
 - drag maximum height
 - range loss to drag
-- time step
 
 The graph also marks the peak and impact points for ideal and drag trajectories, shows the launch angle at the origin, and includes:
 
+- a temporary overlay that appears on the graph while the trajectory is being recalculated
 - a header velocity indicator for drag impact speed
 - header flight-time indicators for ideal and drag solutions
 - a header Reynolds-number indicator for the drag solution at impact
@@ -161,7 +164,7 @@ The graph also marks the peak and impact points for ideal and drag trajectories,
 
 - 2D planar point-mass motion only
 - round shot uses a spherical projectile model with a Haider-Levenspiel Reynolds-side base drag correlation and a separate Mach correction
-- shell presets now use a `G7` ballistic-coefficient model by default
+- shell presets now use a `G7` ballistic-coefficient model by default; the backend can still calculate `G1`, but the current historical shell presets remain on `G7`
 - the `G1/G7` drag-function shapes are standard fitted curves, but the preset ballistic-coefficient values are still approximate and not all tied to historical firing tables
 - shell `sphericity` is currently descriptive metadata for presets rather than an extra correction layered on top of the `G1/G7 + BC` law
 - pressure is clamped to a minimum supported value of `0.001 atm`
