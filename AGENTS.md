@@ -31,6 +31,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 - [`ballistics/physics/ideal.py`](ballistics/physics/ideal.py): analytical ideal-motion solver.
 - [`ballistics/physics/drag.py`](ballistics/physics/drag.py): aerodynamic helpers and RK4 drag solver.
 - [`ballistics/presets.py`](ballistics/presets.py): default parameters and historical launcher presets.
+- [`docs/api.md`](docs/api.md): browser-facing API contract for bootstrap/session flow and `POST /api/simulate`.
 - [`tests/test_physics.py`](tests/test_physics.py): physics regression tests.
 - [`tests/test_wsgi.py`](tests/test_wsgi.py): API/auth/WSGI tests.
 - [`tests/test_frontend.py`](tests/test_frontend.py): frontend contract tests using string assertions against the HTML template.
