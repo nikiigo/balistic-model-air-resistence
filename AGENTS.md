@@ -48,9 +48,10 @@ Interactive ballistics simulator for physics education. The Python server is the
 ## Preset Architecture
 
 - Backend physics presets live in [`ballistics/presets.py`](ballistics/presets.py). Treat that file as the source of truth for simulation parameters.
-- Frontend historical launchers in [`ballistics/web/templates.py`](ballistics/web/templates.py) mirror the physics params and add presentation fields such as names, notes, images, and sources.
-- Keep preset families explicit in both places. Do not rely on inherited or partially merged state to imply sphere-vs-shell behavior.
-- When a preset changes, verify all of: backend params, frontend params, launcher hover copy, tests, and README references that mention the preset.
+- Frontend generic presets and historical launcher params are serialized from the backend into [`ballistics/web/templates.py`](ballistics/web/templates.py) as `presets` and `historicalGunParams`.
+- The frontend `historicalGuns` object in [`ballistics/web/templates.py`](ballistics/web/templates.py) should mainly add presentation metadata such as names, notes, images, and sources while reusing `historicalGunParams.<key>` for physics.
+- Keep preset families explicit in backend preset data. Do not rely on inherited or partially merged state in the frontend to imply sphere-vs-shell behavior.
+- When a preset changes, verify all of: backend params in [`ballistics/presets.py`](ballistics/presets.py), frontend launcher metadata in [`ballistics/web/templates.py`](ballistics/web/templates.py), launcher hover copy, tests, and README references that mention the preset.
 - Launcher images are local assets under `assets/guns/`. The hover panel now uses a fixed `4:3` media frame in [`ballistics/web/templates.py`](ballistics/web/templates.py), so new images should be chosen or prepared to read well in that crop.
 
 ## Validation Snapshot
