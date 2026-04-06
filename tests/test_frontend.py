@@ -1,15 +1,18 @@
 import unittest
 
-from ballistics.constants import MIN_PRESSURE_ATM
+from ballistics.constants import MAX_PRESSURE_ATM, MAX_SPEED, MIN_PRESSURE_ATM
 from ballistics.web.templates import HTML_PAGE
 
 
 class FrontendContractTests(unittest.TestCase):
     def test_pressure_slider_enforces_supported_minimum(self) -> None:
-        self.assertIn(f'id="pressure" type="range" min="{MIN_PRESSURE_ATM}" max="1.2"', HTML_PAGE)
+        self.assertIn(f'id="pressure" type="range" min="{MIN_PRESSURE_ATM}" max="{MAX_PRESSURE_ATM}"', HTML_PAGE)
         self.assertIn("const MIN_PRESSURE = 0.001;", HTML_PAGE)
         self.assertIn("function clampPressure(pressureAtm)", HTML_PAGE)
         self.assertIn("Number(v) < 0.01 ? Number(v).toFixed(3) : Number(v).toFixed(2)", HTML_PAGE)
+
+    def test_speed_slider_matches_backend_limit(self) -> None:
+        self.assertIn(f'id="speed" type="range" min="5" max="{int(MAX_SPEED)}"', HTML_PAGE)
 
     def test_material_density_control_can_expand_for_dense_historic_presets(self) -> None:
         self.assertIn("function syncMaterialDensityLimit(materialDensity)", HTML_PAGE)
