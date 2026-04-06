@@ -105,6 +105,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       letter-spacing: -0.05em;
     }
 
+    .hero-title {
+      display: flex;
+      align-items: center;
+      gap: clamp(8px, 0.8vw, 10px);
+      flex-wrap: nowrap;
+    }
+
+    .help-trigger {
+      min-width: 34px;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--hero-stat-pad-y) var(--hero-stat-pad-x);
+      border-radius: var(--hero-stat-radius);
+      border: 1px solid rgba(255,255,255,0.5);
+      background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.4));
+    }
+
+    .help-glyph {
+      display: block;
+      color: var(--accent);
+      font-size: 2.45rem;
+      font-weight: 950;
+      line-height: 0.78;
+      transform: translateY(-1px) scale(1.08);
+      transform-origin: center;
+    }
+
+    .help-trigger:hover {
+      border-color: rgba(182, 70, 42, 0.18);
+      background: linear-gradient(180deg, #c95236, #a73c23);
+    }
+
+    .help-trigger:hover .help-glyph {
+      color: #fff7f0;
+    }
+
     .hero p {
       margin: 0;
       color: var(--muted);
@@ -115,7 +153,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .stat-strip {
       display: grid;
       gap: clamp(8px, 0.9vw, 12px);
-      grid-template-columns: repeat(8, minmax(0, 1fr));
+      grid-template-columns: repeat(9, minmax(0, 1fr));
     }
 
     .stat {
@@ -724,6 +762,96 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-weight: 700;
     }
 
+    .guide-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 25;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(31, 31, 26, 0.42);
+      backdrop-filter: blur(6px);
+    }
+
+    .guide-overlay.hidden {
+      display: none;
+    }
+
+    .guide-card {
+      width: min(760px, 100%);
+      max-height: min(78vh, 760px);
+      overflow: auto;
+      padding: clamp(18px, 1.8vw, 24px);
+      border-radius: 22px;
+      background: rgba(255, 248, 236, 0.98);
+      border: 1px solid var(--border);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+      display: grid;
+      gap: 14px;
+    }
+
+    .guide-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 12px;
+    }
+
+    .guide-head h2 {
+      margin: 0;
+      font-size: clamp(1.2rem, 2vw, 1.5rem);
+      letter-spacing: -0.03em;
+    }
+
+    .guide-close {
+      min-width: 34px;
+      min-height: 34px;
+      padding: 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.82);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      font-size: 1.05rem;
+      line-height: 1;
+    }
+
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(10px, 1vw, 14px);
+    }
+
+    .guide-section {
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(31, 31, 26, 0.08);
+      border-radius: 18px;
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .guide-section h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .guide-section p,
+    .guide-section li {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.93rem;
+      line-height: 1.45;
+    }
+
+    .guide-section ul {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 7px;
+    }
+
     @media (max-width: 1080px) {
       .shell {
         grid-template-columns: 1fr;
@@ -735,6 +863,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .guide-grid {
         grid-template-columns: 1fr;
       }
 
@@ -871,7 +1003,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <section class="hero card">
       <div>
         <p class="muted">Physics Education Sandbox</p>
-        <h1>Interactive Ballistics Simulator</h1>
+        <div class="hero-title">
+          <h1>Interactive Ballistics Simulator</h1>
+        </div>
       </div>
       <div class="stat-strip">
         <div class="stat">
@@ -909,8 +1043,48 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button type="button" id="scaleFitBtn">Fit shot</button>
           </div>
         </div>
+        <button type="button" class="stat help-trigger" id="guideBtn" aria-haspopup="dialog" aria-controls="guideOverlay" aria-label="Open quick guide"><span class="help-glyph">?</span></button>
       </div>
     </section>
+
+    <div class="guide-overlay hidden" id="guideOverlay" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+      <div class="guide-card">
+        <div class="guide-head">
+          <div>
+            <h2 id="guideTitle">Quick Guide</h2>
+            <p class="muted">What this simulator does, how to use it, and what the current physics models mean.</p>
+          </div>
+          <button type="button" class="guide-close" id="guideCloseBtn" aria-label="Close quick guide">×</button>
+        </div>
+        <div class="guide-grid">
+          <section class="guide-section">
+            <h3>Purpose</h3>
+            <p>The goal of this project is to demonstrate how real-world physical factors affect ballistic modeling results.</p>
+            <p>Use the controls to change launch angle, muzzle velocity, projectile diameter, material density, air temperature, air pressure, and integration time step.</p>
+            <p>The simulator goes beyond vacuum-based equations and includes drag coefficient dependence on Reynolds number, compressibility effects via Mach number, and atmospheric conditions such as temperature and pressure.</p>
+            <p>It highlights how environmental variables can significantly change projectile trajectory, even under otherwise identical initial conditions.</p>
+          </section>
+          <section class="guide-section">
+            <h3>Quick Start</h3>
+            <ul>
+              <li>Start by choosing a historic launcher on the left or stay in manual setup if you want to build a shot from scratch.</li>
+              <li>Watch the graph update and compare the ideal vacuum curve against the drag curve for the same launch conditions.</li>
+              <li>Use the indicators under the graph to compare range, maximum height, time step, and the range lost to drag.</li>
+              <li>Try changing only one environmental parameter at a time, such as air pressure or temperature, to see how strongly the trajectory responds.</li>
+              <li>As a simple experiment, try to find the launch angle that gives the longest drag-limited range in a real atmosphere, then compare it with the ideal vacuum case.</li>
+            </ul>
+          </section>
+          <section class="guide-section">
+            <h3>Round Shot Model</h3>
+            <p>Sphere projectiles use a Reynolds-based round-shot drag law with a Mach correction. Use this for cannon balls, stones, and other near-spherical shot.</p>
+          </section>
+          <section class="guide-section">
+            <h3>Shell Model</h3>
+            <p>Shell projectiles use a G7 ballistic-coefficient model. It ignores actual atmospheric conditions and drag behavior.</p>
+          </section>
+        </div>
+      </div>
+    </div>
 
     <aside class="guns card">
       <div class="section-stack">
@@ -1133,6 +1307,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const gunHoverImage = document.getElementById("gunHoverImage");
     const gunHoverSpecs = document.getElementById("gunHoverSpecs");
     const gunHoverSources = document.getElementById("gunHoverSources");
+    const guideBtn = document.getElementById("guideBtn");
+    const guideOverlay = document.getElementById("guideOverlay");
+    const guideCloseBtn = document.getElementById("guideCloseBtn");
     const bootstrapGate = document.getElementById("bootstrapGate");
     const bootstrapPrompt = document.getElementById("bootstrapPrompt");
     const bootstrapAnswer = document.getElementById("bootstrapAnswer");
@@ -1712,6 +1889,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       calcStatusEl.classList.remove("visible", "busy", "ready", "blocked", "error");
     }
 
+    function openGuide() {
+      guideOverlay.classList.remove("hidden");
+    }
+
+    function closeGuide() {
+      guideOverlay.classList.add("hidden");
+    }
+
     function bootstrapRequired() {
       return !state.csrfToken;
     }
@@ -2158,6 +2343,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     toggleControlsBtn.addEventListener("click", () => {
       setControlsCollapsed(!state.controlsCollapsed);
     });
+    guideBtn.addEventListener("click", openGuide);
+    guideCloseBtn.addEventListener("click", closeGuide);
+    guideOverlay.addEventListener("click", (event) => {
+      if (event.target === guideOverlay) {
+        closeGuide();
+      }
+    });
     document.getElementById("scaleStableBtn").addEventListener("click", () => {
       setScaleMode("stable");
     });
@@ -2192,6 +2384,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     });
     window.addEventListener("resize", () => {
       redrawDisplay();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !guideOverlay.classList.contains("hidden")) {
+        closeGuide();
+      }
     });
 
     renderGunLibrary();
