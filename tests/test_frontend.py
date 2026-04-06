@@ -25,6 +25,26 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function activePlotBounds()", HTML_PAGE)
         self.assertIn('body: JSON.stringify({ ...state.params, currentGun: state.currentGun })', HTML_PAGE)
 
+    def test_historic_hover_panel_is_anchored_higher_on_desktop(self) -> None:
+        self.assertIn("top: clamp(-120px, -10vh, -56px);", HTML_PAGE)
+        self.assertIn('class="gun-hover-body"', HTML_PAGE)
+        self.assertIn('class="gun-hover-media"', HTML_PAGE)
+        self.assertNotIn('class="gun-hover-head"', HTML_PAGE)
+        self.assertIn(".gun-copy {\n      display: block;", HTML_PAGE)
+        self.assertIn(".gun-specs {\n      display: block;", HTML_PAGE)
+        self.assertIn(".gun-hover-media {\n      width: 100%;", HTML_PAGE)
+        self.assertIn("aspect-ratio: 4 / 3;", HTML_PAGE)
+
+    def test_frontend_historical_guns_reuse_backend_param_map(self) -> None:
+        self.assertIn("const presets = ", HTML_PAGE)
+        self.assertIn("const historicalGunParams = ", HTML_PAGE)
+        self.assertIn("params: historicalGunParams.ballista", HTML_PAGE)
+        self.assertIn("params: historicalGunParams.napoleon", HTML_PAGE)
+
+    def test_ballista_and_mangonel_use_updated_local_images(self) -> None:
+        self.assertIn('/assets/guns/roman-ballista-alesia.jpg', HTML_PAGE)
+        self.assertIn('/assets/guns/mauvezin-mangonel.jpg', HTML_PAGE)
+
     def test_selected_gun_can_be_customized_without_leaving_gun_context(self) -> None:
         self.assertIn("presetModified: false", HTML_PAGE)
         self.assertIn("state.presetModified = !paramsMatch(state.params, historicalGuns[state.currentGun].params);", HTML_PAGE)

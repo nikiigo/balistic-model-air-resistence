@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-HTML_PAGE = """<!DOCTYPE html>
+import json
+
+from ballistics.presets import HISTORICAL_PLOT_REFERENCE_PARAMS, REFERENCE_PRESETS
+
+
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -604,8 +609,8 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     .gun-copy {
-      display: grid;
-      gap: clamp(5px, 0.55vw, 6px);
+      display: block;
+      color: var(--text);
     }
 
     .gun-copy h3,
@@ -615,15 +620,22 @@ HTML_PAGE = """<!DOCTYPE html>
     }
 
     .gun-specs {
-      display: grid;
-      gap: clamp(5px, 0.55vw, 6px);
+      display: block;
+      margin-top: clamp(5px, 0.55vw, 6px);
       color: var(--muted);
       font-size: 0.92rem;
     }
 
+    .gun-specs span,
+    .gun-copy .muted,
+    .gun-copy p {
+      display: block;
+      margin-top: clamp(5px, 0.55vw, 6px);
+    }
+
     .gun-hover {
       position: absolute;
-      top: 0;
+      top: clamp(-120px, -10vh, -56px);
       left: calc(100% + var(--overlay-gap));
       width: min(var(--gun-hover-width), 42vw);
       padding: var(--gun-hover-pad);
@@ -634,15 +646,19 @@ HTML_PAGE = """<!DOCTYPE html>
       z-index: 5;
     }
 
-    .gun-hover.hidden {
-      display: none;
+    .gun-hover-body {
+      display: block;
     }
 
-    .gun-hover-head {
-      display: flex;
-      justify-content: space-between;
-      gap: var(--overlay-gap);
-      align-items: start;
+    .gun-hover-media {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      margin-bottom: var(--overlay-gap);
+    }
+
+    .gun-hover.hidden {
+      display: none;
     }
 
     .source-list {
@@ -798,6 +814,15 @@ HTML_PAGE = """<!DOCTYPE html>
         width: 100%;
       }
 
+      .gun-hover-body {
+        display: block;
+      }
+
+      .gun-hover-media {
+        width: 100%;
+        aspect-ratio: 4 / 3;
+      }
+
       .control-pop {
         top: 10px;
         left: 10px;
@@ -896,17 +921,16 @@ HTML_PAGE = """<!DOCTYPE html>
         <div class="gun-zone">
           <div class="gun-library" id="gunLibrary"></div>
           <div class="gun-hover hidden" id="gunHover">
-            <div class="gun-hover-head">
-              <div>
+            <div class="gun-hover-body">
+              <div class="gun-copy">
+                <div class="gun-hover-media">
+                  <img id="gunHoverImage" alt="" loading="lazy">
+                </div>
                 <h3 id="gunHoverTitle">Historic launcher</h3>
                 <div class="muted" id="gunHoverSubtitle"></div>
+                <div class="gun-specs" id="gunHoverSpecs"></div>
+                <div class="source-list" id="gunHoverSources"></div>
               </div>
-            </div>
-            <img id="gunHoverImage" alt="" loading="lazy">
-            <div class="gun-copy">
-              <div class="gun-specs" id="gunHoverSpecs"></div>
-              <div class="muted" id="gunHoverNote"></div>
-              <div class="source-list" id="gunHoverSources"></div>
             </div>
           </div>
         </div>
@@ -1079,12 +1103,8 @@ HTML_PAGE = """<!DOCTYPE html>
     };
     const MIN_PRESSURE = 0.001;
 
-    const presets = {
-      vacuum: { angle: 45, speed: 50, materialDensity: materialDensityFromMassAndDiameter(1, 0.113), temperature: 15, pressure: MIN_PRESSURE, diameter: 0.113, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
-      highDrag: { angle: 42, speed: 48, materialDensity: materialDensityFromMassAndDiameter(0.45, 0.239), temperature: 30, pressure: 1.05, diameter: 0.239, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
-      heavy: { angle: 45, speed: 55, materialDensity: materialDensityFromMassAndDiameter(8, 0.124), temperature: 15, pressure: 1, diameter: 0.124, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
-      longRange: { angle: 34, speed: 120, materialDensity: materialDensityFromMassAndDiameter(5, 0.101), temperature: 5, pressure: 0.9, diameter: 0.101, dt: 0.01, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 }
-    };
+    const presets = __REFERENCE_PRESETS_JSON__;
+    const historicalGunParams = __HISTORICAL_GUN_PARAMS_JSON__;
 
     const formatters = {
       angle: (v) => `${Number(v).toFixed(1)}°`,
@@ -1112,7 +1132,6 @@ HTML_PAGE = """<!DOCTYPE html>
     const gunHoverSubtitle = document.getElementById("gunHoverSubtitle");
     const gunHoverImage = document.getElementById("gunHoverImage");
     const gunHoverSpecs = document.getElementById("gunHoverSpecs");
-    const gunHoverNote = document.getElementById("gunHoverNote");
     const gunHoverSources = document.getElementById("gunHoverSources");
     const bootstrapGate = document.getElementById("bootstrapGate");
     const bootstrapPrompt = document.getElementById("bootstrapPrompt");
@@ -1140,8 +1159,8 @@ HTML_PAGE = """<!DOCTYPE html>
       ballista: {
         name: "Ballista",
         subtitle: "Ancient Mediterranean to medieval period",
-        image: "/assets/guns/hecht-ballista.jpg",
-        imageAlt: "Roman ballista reconstruction displayed outdoors",
+        image: "/assets/guns/roman-ballista-alesia.jpg",
+        imageAlt: "Roman ballista reproduction displayed at Alesia",
         imagePosition: "center center",
         diameterLabel: "50 mm bolt body",
         projectile: "0.85 kg bolt",
@@ -1149,35 +1168,35 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Direct-fire anti-personnel / anti-material shot",
         service: "Ancient and medieval siege warfare",
         note: "The ballista preset uses the simulator's G7 ballistic-coefficient shell path to approximate a large bolt rather than a stone sphere. It remains a point-mass flight approximation after release.",
-        params: { angle: 35, speed: 70, materialDensity: materialDensityFromMassAndDiameter(0.85, 0.05, 4.6), temperature: 15, pressure: 1, diameter: 0.05, dt: 0.016, projectileShape: "shell", sphericity: 0.4, volumeFactor: 4.6, dragModel: "g7", ballisticCoefficient: 0.12 },
+        params: historicalGunParams.ballista,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Ballista" },
-          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Hecht_090710_Ballista.jpg" }
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Reproduction_of_Roman_Ballista_-_Al%C3%A9sia_2015.jpg" }
         ]
       },
       mangonel: {
         name: "Mangonel / traction catapult",
         subtitle: "Late antiquity to medieval period",
-        image: "/assets/guns/onager.jpg",
-        imageAlt: "Onager-style siege engine at Arde Lucus",
+        image: "/assets/guns/mauvezin-mangonel.jpg",
+        imageAlt: "Medieval catapult displayed inside the courtyard of Mauvezin Castle",
         imagePosition: "center center",
         diameterLabel: "180 mm stone",
         projectile: "12 kg stone shot",
         muzzleVelocity: "Modeled 42 m/s release",
         range: "Short-range bombardment",
-        service: "Field and siege artillery before gunpowder",
+        service: "Late antique and medieval siege warfare",
         note: "This preset represents a lighter torsion or traction-style engine. Its lower release speed and heavier launch angle make it useful for comparing pre-gunpowder trajectories against cannons.",
-        params: { angle: 38, speed: 42, materialDensity: materialDensityFromMassAndDiameter(12, 0.18), temperature: 15, pressure: 1, diameter: 0.18, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.mangonel,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Mangonel" },
-          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Onager.jpg" }
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:The_medieval_catapult,_inside_the_courtyard_of_Mauvezin_Castle.jpg" }
         ]
       },
       trebuchet: {
         name: "Counterweight trebuchet",
         subtitle: "Mediterranean / Europe, 12th to 15th century",
-        image: "/assets/guns/trebuchet-siege-engine.jpg",
-        imageAlt: "Trebuchet siege engine photographed at Caerlaverock Castle",
+        image: "/assets/guns/warwick-castle-trebuchet.jpg",
+        imageAlt: "Large counterweight trebuchet at Warwick Castle",
         imagePosition: "center center",
         diameterLabel: "280 mm stone",
         projectile: "30 kg stone shot",
@@ -1185,10 +1204,10 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Heavy siege bombardment",
         service: "Medieval siege warfare",
         note: "This preset approximates a large counterweight trebuchet with a heavy stone release. The simulator starts at projectile release rather than modeling sling and arm dynamics.",
-        params: { angle: 43, speed: 55, materialDensity: materialDensityFromMassAndDiameter(30, 0.28), temperature: 15, pressure: 1, diameter: 0.28, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.trebuchet,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Trebuchet" },
-          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Trebuchet_-_geograph.org.uk_-_979143.jpg" }
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Warwick_Castle_trebuchet.jpg" }
         ]
       },
       saker: {
@@ -1201,9 +1220,9 @@ HTML_PAGE = """<!DOCTYPE html>
         projectile: "5.25 lb shot (2.38 kg)",
         muzzleVelocity: "Estimated 164 m/s",
         range: "2,743 m maximum range",
-        service: "Tudor and Stuart artillery",
+        service: "Tudor and Stuart field artillery",
         note: "The simulator launch speed is inferred from the reported maximum range. Real service loads varied substantially across foundries and periods.",
-        params: { angle: 15, speed: 164, materialDensity: materialDensityFromMassAndDiameter(2.38, 0.083), temperature: 15, pressure: 1, diameter: 0.083, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.saker,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Saker" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker,_Used_by_Chinese_and_Vietnamese,_Fort_Nelson,_Hampshire.jpg" }
@@ -1221,7 +1240,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,829 m test range",
         service: "Tudor coastal artillery",
         note: "This giant basilisk survives at Dover Castle. The simulator launch speed is inferred from the reported shot distance rather than a documented muzzle-velocity figure.",
-        params: { angle: 16, speed: 134, materialDensity: materialDensityFromMassAndDiameter(4.54, 0.121), temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.basilisk,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Queen_Elizabeth%27s_Pocket_Pistol" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Queen_Elizabeth%27s_Pocket_Pistol.JPG" }
@@ -1239,7 +1258,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Over 450 m at low elevation",
         service: "Renaissance field and siege artillery",
         note: "This preset follows the extraordinary culverin class, matching the reported modern-replica velocity with a heavier 20-pound shot rather than the lighter ordinary culverin ball.",
-        params: { angle: 9, speed: 408, materialDensity: materialDensityFromMassAndDiameter(9.07, 0.140), temperature: 15, pressure: 1, diameter: 0.140, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.culverin,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Korean_culverin.jpg" }
@@ -1257,7 +1276,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "549 m effective range",
         service: "Naval and field artillery",
         note: "The article provides shot class and effective range but not muzzle velocity. The simulator uses a conservative modeled launch speed consistent with a lighter long gun sitting between a saker and a culverin.",
-        params: { angle: 14, speed: 145, materialDensity: materialDensityFromMassAndDiameter(3.63, 0.102), temperature: 15, pressure: 1, diameter: 0.102, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.demiCulverin,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Demi_Culverin,_Mary_Rose_-_55130506883.jpg" }
@@ -1275,7 +1294,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,524 m maximum range",
         service: "Light field and fortress artillery",
         note: "This light piece is modeled from its reported maximum range rather than a preserved firing table, so the simulator value is an educational approximation.",
-        params: { angle: 17, speed: 122, materialDensity: materialDensityFromMassAndDiameter(0.45, 0.051), temperature: 15, pressure: 1, diameter: 0.051, dt: 0.018, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.falconet,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Falconet" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Falconet_wrought_iron_17th_century_(16424842933).jpg" }
@@ -1293,7 +1312,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "488 m effective range",
         service: "Naval broadside artillery",
         note: "The article gives shot class and effective range rather than muzzle velocity. The simulator uses a conservative modeled launch speed and a representative heavy naval gun image.",
-        params: { angle: 11, speed: 95, materialDensity: materialDensityFromMassAndDiameter(14.5, 0.159), temperature: 15, pressure: 1, diameter: 0.159, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.demiCannon,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-cannon" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:32-pounder_Naval_Cannon_(Raleigh,_NC)_-_DSC05867.JPG" }
@@ -1309,9 +1328,9 @@ HTML_PAGE = """<!DOCTYPE html>
         projectile: "12 French livres round shot (~5.88 kg)",
         muzzleVelocity: "Estimated 133 m/s",
         range: "1,800 m max range",
-        service: "American Revolutionary War, Napoleonic Wars",
+        service: "Revolutionary and Napoleonic field artillery",
         note: "The source used here gives range but not muzzle velocity. The simulator launch speed is inferred from the reported 1,800 m maximum range under an idealized 45° estimate.",
-        params: { angle: 18, speed: 133, materialDensity: materialDensityFromMassAndDiameter(5.88, 0.121), temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.gribeauval,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Canon_de_12_Gribeauval" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gribeauval_cannon_de_12_An_2_de_la_Republique.jpg" }
@@ -1327,9 +1346,9 @@ HTML_PAGE = """<!DOCTYPE html>
         projectile: "6 lb round shot (2.72 kg)",
         muzzleVelocity: "1,450 ft/s (442 m/s)",
         range: "1,451 yd at 5°",
-        service: "Mexican-American War, early American Civil War",
+        service: "Mexican-American War, early American Civil War field artillery",
         note: "This preset follows the historical comparison setup used in the validation snapshot: a 6-pound round shot at 5 degrees elevation and 1,450 ft/s. The repository does not include a dedicated M1841 image, so this entry uses a representative light field gun image.",
-        params: { angle: 5, speed: 1450 * 0.3048, materialDensity: materialDensityFromMassAndDiameter(2.72155, 0.093218), temperature: 15, pressure: 1, diameter: 0.093218, dt: 0.01, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.m1841SixPounder,
         sources: [
           { label: "Specs", url: "https://antietam.aotw.org/weapons.php?weapon_id=12" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker_at_Fort_Nelson.jpg" }
@@ -1347,7 +1366,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Shell-gun naval artillery",
         service: "Explosive-shell naval warfare",
         note: "The Paixhans gun was designed for explosive shells fired on a flatter trajectory than older shell artillery. This preset uses the simulator's G7 ballistic-coefficient shell model with an effective shell-density approximation.",
-        params: { angle: 5, speed: 400, materialDensity: materialDensityFromMassAndDiameter(30, 0.22, 1.35), temperature: 15, pressure: 1, diameter: 0.22, dt: 0.01, projectileShape: "shell", sphericity: 0.72, volumeFactor: 1.35, dragModel: "g7", ballisticCoefficient: 0.19 },
+        params: historicalGunParams.paixhans,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Paixhans_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Canon-Obusier-80lbs-22cm-Paixhans-No.4621.jpg" }
@@ -1363,9 +1382,9 @@ HTML_PAGE = """<!DOCTYPE html>
         projectile: "11 lb 4 oz common shell (5.10 kg)",
         muzzleVelocity: "378 m/s",
         range: "3,109 m",
-        service: "Second Opium War, New Zealand Wars",
+        service: "Second Opium War and New Zealand Wars field artillery",
         note: "This early breech-loader used rifled ammunition. The preset uses the listed common-shell weight with the simulator's G7 ballistic-coefficient shell model.",
-        params: { angle: 8, speed: 378, materialDensity: materialDensityFromMassAndDiameter(5.1, 0.076, 2.85), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.64, volumeFactor: 2.85, dragModel: "g7", ballisticCoefficient: 0.24 },
+        params: historicalGunParams.armstrong,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/RBL_12-pounder_8_cwt_Armstrong_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:AWM-Armstrong-gun-1.jpg" }
@@ -1381,9 +1400,9 @@ HTML_PAGE = """<!DOCTYPE html>
         projectile: "9.5 lb shell (4.3 kg)",
         muzzleVelocity: "370 m/s",
         range: "1,673 m at 5°",
-        service: "American Civil War",
+        service: "American Civil War field artillery",
         note: "This preset represents a rifled shell rather than a smooth round shot. It uses the simulator's G7 ballistic-coefficient shell model.",
-        params: { angle: 10, speed: 370, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.076, 2.4), temperature: 15, pressure: 1, diameter: 0.076, dt: 0.01, projectileShape: "shell", sphericity: 0.66, volumeFactor: 2.4, dragModel: "g7", ballisticCoefficient: 0.22 },
+        params: historicalGunParams.ordnance,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/3-inch_ordnance_rifle" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:CW_Arty_3in_Ordnance_front.jpg" }
@@ -1399,9 +1418,9 @@ HTML_PAGE = """<!DOCTYPE html>
         projectile: "12 lb round shot (5.44 kg)",
         muzzleVelocity: "439 m/s",
         range: "1,480 m at 5°",
-        service: "American Civil War",
+        service: "American Civil War field artillery",
         note: "This is a smoothbore gun-howitzer. The preset keeps the round-shot drag model used elsewhere in the simulator.",
-        params: { angle: 12, speed: 439, materialDensity: materialDensityFromMassAndDiameter(5.44, 0.117), temperature: 15, pressure: 1, diameter: 0.117, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.napoleon,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/M1857_12-pounder_Napoleon" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gettysburg,_12-pounder_Napoleon.jpg" }
@@ -1419,7 +1438,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,692 m at 5°",
         service: "American Civil War field artillery",
         note: "This preset follows the documented 2.9-inch Parrott rifle figures and uses the simulator's G7 ballistic-coefficient shell model for its elongated projectile.",
-        params: { angle: 5, speed: 375, materialDensity: materialDensityFromMassAndDiameter(4.3, 0.074, 2.6), temperature: 15, pressure: 1, diameter: 0.074, dt: 0.01, projectileShape: "shell", sphericity: 0.65, volumeFactor: 2.6, dragModel: "g7", ballisticCoefficient: 0.21 },
+        params: historicalGunParams.parrott,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/10-pounder_Parrott_rifle" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:10_Pounder_Parrott_Rifle,_Chickamauga_Battlefield_Visitors_Center.jpg" }
@@ -1437,7 +1456,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Naval long-range battery class",
         service: "Age-of-Sail naval artillery",
         note: "The source identifies the gun class, caliber, and shot weight, but muzzle velocity varied by navy, barrel pattern, and powder charge. This preset uses a representative modeled launch speed for a heavy long gun rather than one universal historical firing table.",
-        params: { angle: 6, speed: 450, materialDensity: materialDensityFromMassAndDiameter(10.89, 0.1522), temperature: 15, pressure: 1, diameter: 0.1522, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+        params: historicalGunParams.longGun24,
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/24-pounder_long_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Ca%C3%B1%C3%B3n_de_a_24_libras_en_Isla_Mancera,_Chile.jpg" }
@@ -1641,9 +1660,7 @@ HTML_PAGE = """<!DOCTYPE html>
         <span><strong>Projectile:</strong> ${gun.projectile}</span>
         <span><strong>Muzzle velocity:</strong> ${gun.muzzleVelocity}</span>
         <span><strong>Service:</strong> ${gun.service}</span>
-        <span><strong>Reported range:</strong> ${gun.range}</span>
       `;
-      gunHoverNote.textContent = gun.note;
       gunHoverSources.innerHTML = gun.sources.map((source) => `<a href="${source.url}" target="_blank" rel="noreferrer">${source.label}</a>`).join("");
       gunHover.classList.remove("hidden");
     }
@@ -2191,3 +2208,9 @@ HTML_PAGE = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+HTML_PAGE = (
+    HTML_TEMPLATE
+    .replace("__REFERENCE_PRESETS_JSON__", json.dumps(REFERENCE_PRESETS, separators=(",", ":")))
+    .replace("__HISTORICAL_GUN_PARAMS_JSON__", json.dumps(HISTORICAL_PLOT_REFERENCE_PARAMS, separators=(",", ":")))
+)
