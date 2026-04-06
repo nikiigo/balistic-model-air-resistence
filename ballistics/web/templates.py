@@ -874,11 +874,11 @@ HTML_PAGE = """<!DOCTYPE html>
             </label>
             <label>
               <span class="control-header"><span>Initial velocity</span><span class="value" data-out="speed">55.0 m/s</span></span>
-              <input id="speed" type="range" min="5" max="440" step="1" value="55">
+              <input id="speed" type="range" min="5" max="600" step="1" value="55">
             </label>
             <label>
               <span class="control-header"><span>Air pressure</span><span class="value" data-out="pressure">1.00 atm</span></span>
-              <input id="pressure" type="range" min="0.001" max="1.2" step="0.001" value="1">
+              <input id="pressure" type="range" min="0.001" max="2.0" step="0.001" value="1">
             </label>
             <label>
               <span class="control-header"><span>Air temperature</span><span class="value" data-out="temperature">15.0 °C</span></span>
