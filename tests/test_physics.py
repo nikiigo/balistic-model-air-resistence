@@ -387,20 +387,7 @@ class ValidationSnapshotRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(result["metrics"]["range"] * YARDS_PER_METER, expected_yards, places=places)
 
     def test_m1841_six_pounder_snapshot(self) -> None:
-        params: SimulationParams = {
-            "angle": 5.0,
-            "speed": 1450.0 * 0.3048,
-            "materialDensity": material_density_from_mass_and_diameter(2.72155, 0.093218),
-            "temperature": 15.0,
-            "pressure": 1.0,
-            "diameter": 0.093218,
-            "dt": 0.01,
-            "projectileShape": "sphere",
-            "sphericity": 1.0,
-            "volumeFactor": 1.0,
-            "dragModel": "g7",
-            "ballisticCoefficient": 0.0,
-        }
+        params = deepcopy(HISTORICAL_PLOT_REFERENCE_PARAMS["m1841SixPounder"])
         self.assert_range_matches_snapshot(params, 1451.0, places=0)
 
     def test_napoleon_snapshot(self) -> None:
