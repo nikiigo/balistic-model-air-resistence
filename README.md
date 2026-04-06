@@ -117,6 +117,8 @@ The flight model is a 2D point-mass model in horizontal distance and height.
 
 At each integration step, the drag solver advances the trajectory with a classical fourth-order Runge-Kutta (RK4) method.
 
+RK4 is used here because the drag trajectory is governed by nonlinear ordinary differential equations: drag depends on speed, while the effective aerodynamic terms depend on the current Mach number and Reynolds number. For this kind of smooth nonlinear point-mass flight problem, RK4 gives a good practical balance between accuracy, stability, and implementation simplicity without requiring extremely small time steps.
+
 ## Validation Snapshot
 
 The table below compares the current model against a few historical artillery reference points that are close to presets in the simulator. These are spot checks, not a full firing-table calibration. The listed model ranges are also covered by regression tests so the documented snapshot stays aligned with the solver.

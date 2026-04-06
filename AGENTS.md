@@ -45,6 +45,13 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Pressure is clamped to the supported floor `MIN_PRESSURE_ATM = 0.001`.
 - When changing physics behavior, add or update regression tests in [`tests/test_physics.py`](tests/test_physics.py).
 
+## Preset Architecture
+
+- Backend physics presets live in [`ballistics/presets.py`](ballistics/presets.py). Treat that file as the source of truth for simulation parameters.
+- Frontend historical launchers in [`ballistics/web/templates.py`](ballistics/web/templates.py) mirror the physics params and add presentation fields such as names, notes, images, and sources.
+- Keep preset families explicit in both places. Do not rely on inherited or partially merged state to imply sphere-vs-shell behavior.
+- When a preset changes, verify all of: backend params, frontend params, launcher hover copy, tests, and README references that mention the preset.
+
 ## Validation Snapshot
 
 - The README's `Validation Snapshot` table is backed by regression tests in [`tests/test_physics.py`](tests/test_physics.py) under `ValidationSnapshotRegressionTests`.
@@ -54,11 +61,20 @@ Interactive ballistics simulator for physics education. The Python server is the
 - If physics changes move one of these ranges, update both the regression test and the README table in the same change. Do not leave the README snapshot as a stale hand-maintained number.
 - When adding a historical launcher preset, update all of: [`ballistics/presets.py`](ballistics/presets.py), [`ballistics/web/templates.py`](ballistics/web/templates.py), [`tests/test_frontend.py`](tests/test_frontend.py), and any backend stable-bounds coverage in [`tests/test_wsgi.py`](tests/test_wsgi.py). If the preset is part of the documented list, update the README too.
 
+## Model Validation Guidance
+
+- Historical shell presets are currently configured on `G7`.
+- The backend can calculate `G1` for shell projectiles, but the current repository comparisons for the 3-inch Ordnance Rifle and 10-pounder Parrott favor `G7` over `G1`.
+- The validation snapshot is a partial historical comparison, not a full ballistic calibration. Do not overstate it in code comments or docs.
+- If shell drag law or shell preset parameters change, compare the updated results against the validation snapshot tests before changing README claims.
+
 ## Review Hotspots
 
 - Authentication and browser session handling in [`ballistics/web/auth.py`](ballistics/web/auth.py) and [`ballistics/web/app.py`](ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
 - The frontend is embedded in one large HTML template. Small behavior changes can require both JS updates and contract-test updates.
 - The homepage default shot and the metric-card ordering under the graph are hardcoded in [`ballistics/web/templates.py`](ballistics/web/templates.py), not derived from backend presets automatically. The relevant places are the `defaults` object / initial state wiring and `renderMetrics()`.
+- The shell/sphere UI mode can regress if preset params are partial or merged carelessly. Preserve explicit `projectileShape`, shell BC params, and sphere zero-BC params when editing presets or selection logic.
+- The graph recalculation overlay is driven by `updateCalculationStatus()` inside `recalculatePhysics()` and hidden from `redrawDisplay()`. If the overlay behavior changes, update the frontend contract tests too.
 - Plot-bounds behavior is partly precomputed in [`ballistics/schemas.py`](ballistics/schemas.py); changes there can affect historical presets and graph scaling.
 
 ## Change Checklist
