@@ -41,6 +41,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Shell-like projectiles use the `G1/G7 + ballistic coefficient` path rather than the sphere correlation.
 - Shell drag is driven by drag function (`G1`/`G7`) and ballistic coefficient. `sphericity` may be carried in preset metadata, but it is not an independent driver in the current shell drag law.
 - Shell `dragCoefficient` values returned by the API are equivalent coefficients derived from drag force, not direct `Cd(Re, Ma)` correlation outputs.
+- Keep preset families explicit: round-shot presets should carry `projectileShape: "sphere"` with `sphericity = 1`, `volumeFactor = 1`, and `ballisticCoefficient = 0`, while shell presets should carry their shell-specific `volumeFactor`, `dragModel`, and positive `ballisticCoefficient`.
 - Pressure is clamped to the supported floor `MIN_PRESSURE_ATM = 0.001`.
 - When changing physics behavior, add or update regression tests in [`tests/test_physics.py`](tests/test_physics.py).
 

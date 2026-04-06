@@ -26,7 +26,7 @@ from ballistics.physics.drag import (
     sphere_area_from_diameter,
 )
 from ballistics.physics.ideal import analytical_metrics, simulate_ideal_reference
-from ballistics.presets import HISTORICAL_PLOT_REFERENCE_PARAMS
+from ballistics.presets import HISTORICAL_PLOT_REFERENCE_PARAMS, REFERENCE_PRESETS
 from ballistics.schemas import SimulationParams
 
 YARDS_PER_METER = 1.0936132983377078
@@ -349,6 +349,36 @@ class DragSimulationRegressionTests(unittest.TestCase):
         high_bc = simulate_drag_reference({**params, "ballisticCoefficient": 0.30})
         self.assertLess(high_bc["aero"]["launch_drag_force"], low_bc["aero"]["launch_drag_force"])
         self.assertGreater(high_bc["metrics"]["range"], low_bc["metrics"]["range"])
+
+
+class PresetModelContractTests(unittest.TestCase):
+    def test_reference_sphere_presets_explicitly_use_sphere_model(self) -> None:
+        for name, params in REFERENCE_PRESETS.items():
+            with self.subTest(preset=name):
+                self.assertEqual(params["projectileShape"], "sphere")
+                self.assertEqual(params["sphericity"], 1.0)
+                self.assertEqual(params["volumeFactor"], 1.0)
+                self.assertEqual(params["dragModel"], "g7")
+                self.assertEqual(params["ballisticCoefficient"], 0.0)
+
+    def test_historical_sphere_presets_explicitly_use_round_shot_model(self) -> None:
+        for name, params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
+            if params["projectileShape"] != "sphere":
+                continue
+            with self.subTest(preset=name):
+                self.assertEqual(params["sphericity"], 1.0)
+                self.assertEqual(params["volumeFactor"], 1.0)
+                self.assertEqual(params["dragModel"], "g7")
+                self.assertEqual(params["ballisticCoefficient"], 0.0)
+
+    def test_historical_shell_presets_keep_shell_specific_drag_settings(self) -> None:
+        for name, params in HISTORICAL_PLOT_REFERENCE_PARAMS.items():
+            if params["projectileShape"] != "shell":
+                continue
+            with self.subTest(preset=name):
+                self.assertGreater(params["volumeFactor"], 1.0)
+                self.assertGreater(params["ballisticCoefficient"], 0.0)
+                self.assertIn(params["dragModel"], {"g1", "g7"})
 
 
 class ValidationSnapshotRegressionTests(unittest.TestCase):

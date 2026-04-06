@@ -30,6 +30,8 @@ REFERENCE_PRESETS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "highDrag": {
         "angle": 42.0,
@@ -42,6 +44,8 @@ REFERENCE_PRESETS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "heavy": {
         "angle": 45.0,
@@ -54,6 +58,8 @@ REFERENCE_PRESETS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "longRange": {
         "angle": 34.0,
@@ -66,6 +72,8 @@ REFERENCE_PRESETS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
 }
 
@@ -95,6 +103,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "trebuchet": {
         "angle": 43.0,
@@ -107,6 +117,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "saker": {
         "angle": 15.0,
@@ -119,6 +131,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "basilisk": {
         "angle": 16.0,
@@ -131,6 +145,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "culverin": {
         "angle": 9.0,
@@ -143,6 +159,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "demiCulverin": {
         "angle": 14.0,
@@ -155,6 +173,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "falconet": {
         "angle": 17.0,
@@ -167,6 +187,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "demiCannon": {
         "angle": 11.0,
@@ -179,6 +201,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "gribeauval": {
         "angle": 18.0,
@@ -191,6 +215,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "m1841SixPounder": {
         "angle": 5.0,
@@ -203,6 +229,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "paixhans": {
         "angle": 5.0,
@@ -257,6 +285,8 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
     "parrott": {
         "angle": 5.0,
@@ -283,5 +313,7 @@ HISTORICAL_PLOT_REFERENCE_PARAMS = {
         "projectileShape": "sphere",
         "sphericity": 1.0,
         "volumeFactor": 1.0,
+        "dragModel": DEFAULT_SHELL_DRAG_MODEL,
+        "ballisticCoefficient": 0.0,
     },
 }

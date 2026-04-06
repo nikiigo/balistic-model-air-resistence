@@ -237,6 +237,60 @@ HTML_PAGE = """<!DOCTYPE html>
       margin-top: 4px;
     }
 
+    .calc-status {
+      position: absolute;
+      left: 50%;
+      top: 54%;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.94);
+      color: var(--ink);
+      font-size: 0.8rem;
+      font-weight: 700;
+      box-shadow: 0 12px 28px rgba(31,31,26,0.18);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 120ms ease, visibility 120ms ease;
+      pointer-events: none;
+    }
+
+    .calc-status.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .calc-status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(31,31,26,0.3);
+      transition: background 120ms ease;
+    }
+
+    .calc-status.busy::before {
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(182, 70, 42, 0.12);
+    }
+
+    .calc-status.ready::before {
+      background: #2d7a46;
+    }
+
+    .calc-status.blocked::before {
+      background: #8c6b1f;
+    }
+
+    .calc-status.error::before {
+      background: #9c2f1f;
+    }
+
     .material-chip {
       padding: 4px 7px;
       font-size: 0.72rem;
@@ -934,6 +988,7 @@ HTML_PAGE = """<!DOCTYPE html>
           <span><i style="background: var(--drag)"></i> Drag simulation trajectory</span>
           <span><i style="background: var(--compare)"></i> Active tracer / peak markers</span>
         </div>
+        <div class="calc-status" id="calcStatus" aria-live="polite">Recalculating trajectory...</div>
         <canvas id="simCanvas" width="960" height="520"></canvas>
       </div>
       <div class="metric-grid" id="metrics"></div>
@@ -1025,10 +1080,10 @@ HTML_PAGE = """<!DOCTYPE html>
     const MIN_PRESSURE = 0.001;
 
     const presets = {
-      vacuum: { angle: 45, speed: 50, materialDensity: materialDensityFromMassAndDiameter(1, 0.113), temperature: 15, pressure: MIN_PRESSURE, diameter: 0.113, dt: 0.016 },
-      highDrag: { angle: 42, speed: 48, materialDensity: materialDensityFromMassAndDiameter(0.45, 0.239), temperature: 30, pressure: 1.05, diameter: 0.239, dt: 0.012 },
-      heavy: { angle: 45, speed: 55, materialDensity: materialDensityFromMassAndDiameter(8, 0.124), temperature: 15, pressure: 1, diameter: 0.124, dt: 0.016 },
-      longRange: { angle: 34, speed: 120, materialDensity: materialDensityFromMassAndDiameter(5, 0.101), temperature: 5, pressure: 0.9, diameter: 0.101, dt: 0.01 }
+      vacuum: { angle: 45, speed: 50, materialDensity: materialDensityFromMassAndDiameter(1, 0.113), temperature: 15, pressure: MIN_PRESSURE, diameter: 0.113, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+      highDrag: { angle: 42, speed: 48, materialDensity: materialDensityFromMassAndDiameter(0.45, 0.239), temperature: 30, pressure: 1.05, diameter: 0.239, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+      heavy: { angle: 45, speed: 55, materialDensity: materialDensityFromMassAndDiameter(8, 0.124), temperature: 15, pressure: 1, diameter: 0.124, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
+      longRange: { angle: 34, speed: 120, materialDensity: materialDensityFromMassAndDiameter(5, 0.101), temperature: 5, pressure: 0.9, diameter: 0.101, dt: 0.01, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 }
     };
 
     const formatters = {
@@ -1049,6 +1104,7 @@ HTML_PAGE = """<!DOCTYPE html>
     const resetBtn = document.getElementById("resetBtn");
     const toggleControlsBtn = document.getElementById("toggleControlsBtn");
     const controlScroll = document.getElementById("controlScroll");
+    const calcStatusEl = document.getElementById("calcStatus");
     const gunLibraryEl = document.getElementById("gunLibrary");
     const lockNoteEl = document.getElementById("lockNote");
     const gunHover = document.getElementById("gunHover");
@@ -1111,7 +1167,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Short-range bombardment",
         service: "Field and siege artillery before gunpowder",
         note: "This preset represents a lighter torsion or traction-style engine. Its lower release speed and heavier launch angle make it useful for comparing pre-gunpowder trajectories against cannons.",
-        params: { angle: 38, speed: 42, materialDensity: materialDensityFromMassAndDiameter(12, 0.18), temperature: 15, pressure: 1, diameter: 0.18, dt: 0.02 },
+        params: { angle: 38, speed: 42, materialDensity: materialDensityFromMassAndDiameter(12, 0.18), temperature: 15, pressure: 1, diameter: 0.18, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Mangonel" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Onager.jpg" }
@@ -1129,7 +1185,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Heavy siege bombardment",
         service: "Medieval siege warfare",
         note: "This preset approximates a large counterweight trebuchet with a heavy stone release. The simulator starts at projectile release rather than modeling sling and arm dynamics.",
-        params: { angle: 43, speed: 55, materialDensity: materialDensityFromMassAndDiameter(30, 0.28), temperature: 15, pressure: 1, diameter: 0.28, dt: 0.02 },
+        params: { angle: 43, speed: 55, materialDensity: materialDensityFromMassAndDiameter(30, 0.28), temperature: 15, pressure: 1, diameter: 0.28, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Trebuchet" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Trebuchet_-_geograph.org.uk_-_979143.jpg" }
@@ -1147,7 +1203,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "2,743 m maximum range",
         service: "Tudor and Stuart artillery",
         note: "The simulator launch speed is inferred from the reported maximum range. Real service loads varied substantially across foundries and periods.",
-        params: { angle: 15, speed: 164, materialDensity: materialDensityFromMassAndDiameter(2.38, 0.083), temperature: 15, pressure: 1, diameter: 0.083, dt: 0.016 },
+        params: { angle: 15, speed: 164, materialDensity: materialDensityFromMassAndDiameter(2.38, 0.083), temperature: 15, pressure: 1, diameter: 0.083, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Saker" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker,_Used_by_Chinese_and_Vietnamese,_Fort_Nelson,_Hampshire.jpg" }
@@ -1165,7 +1221,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,829 m test range",
         service: "Tudor coastal artillery",
         note: "This giant basilisk survives at Dover Castle. The simulator launch speed is inferred from the reported shot distance rather than a documented muzzle-velocity figure.",
-        params: { angle: 16, speed: 134, materialDensity: materialDensityFromMassAndDiameter(4.54, 0.121), temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02 },
+        params: { angle: 16, speed: 134, materialDensity: materialDensityFromMassAndDiameter(4.54, 0.121), temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Queen_Elizabeth%27s_Pocket_Pistol" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Queen_Elizabeth%27s_Pocket_Pistol.JPG" }
@@ -1183,7 +1239,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Over 450 m at low elevation",
         service: "Renaissance field and siege artillery",
         note: "This preset follows the extraordinary culverin class, matching the reported modern-replica velocity with a heavier 20-pound shot rather than the lighter ordinary culverin ball.",
-        params: { angle: 9, speed: 408, materialDensity: materialDensityFromMassAndDiameter(9.07, 0.140), temperature: 15, pressure: 1, diameter: 0.140, dt: 0.012 },
+        params: { angle: 9, speed: 408, materialDensity: materialDensityFromMassAndDiameter(9.07, 0.140), temperature: 15, pressure: 1, diameter: 0.140, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Korean_culverin.jpg" }
@@ -1201,7 +1257,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "549 m effective range",
         service: "Naval and field artillery",
         note: "The article provides shot class and effective range but not muzzle velocity. The simulator uses a conservative modeled launch speed consistent with a lighter long gun sitting between a saker and a culverin.",
-        params: { angle: 14, speed: 145, materialDensity: materialDensityFromMassAndDiameter(3.63, 0.102), temperature: 15, pressure: 1, diameter: 0.102, dt: 0.016 },
+        params: { angle: 14, speed: 145, materialDensity: materialDensityFromMassAndDiameter(3.63, 0.102), temperature: 15, pressure: 1, diameter: 0.102, dt: 0.016, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-culverin" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Demi_Culverin,_Mary_Rose_-_55130506883.jpg" }
@@ -1219,7 +1275,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,524 m maximum range",
         service: "Light field and fortress artillery",
         note: "This light piece is modeled from its reported maximum range rather than a preserved firing table, so the simulator value is an educational approximation.",
-        params: { angle: 17, speed: 122, materialDensity: materialDensityFromMassAndDiameter(0.45, 0.051), temperature: 15, pressure: 1, diameter: 0.051, dt: 0.018 },
+        params: { angle: 17, speed: 122, materialDensity: materialDensityFromMassAndDiameter(0.45, 0.051), temperature: 15, pressure: 1, diameter: 0.051, dt: 0.018, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Falconet" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Falconet_wrought_iron_17th_century_(16424842933).jpg" }
@@ -1237,7 +1293,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "488 m effective range",
         service: "Naval broadside artillery",
         note: "The article gives shot class and effective range rather than muzzle velocity. The simulator uses a conservative modeled launch speed and a representative heavy naval gun image.",
-        params: { angle: 11, speed: 95, materialDensity: materialDensityFromMassAndDiameter(14.5, 0.159), temperature: 15, pressure: 1, diameter: 0.159, dt: 0.02 },
+        params: { angle: 11, speed: 95, materialDensity: materialDensityFromMassAndDiameter(14.5, 0.159), temperature: 15, pressure: 1, diameter: 0.159, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Demi-cannon" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:32-pounder_Naval_Cannon_(Raleigh,_NC)_-_DSC05867.JPG" }
@@ -1255,7 +1311,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,800 m max range",
         service: "American Revolutionary War, Napoleonic Wars",
         note: "The source used here gives range but not muzzle velocity. The simulator launch speed is inferred from the reported 1,800 m maximum range under an idealized 45° estimate.",
-        params: { angle: 18, speed: 133, materialDensity: materialDensityFromMassAndDiameter(5.88, 0.121), temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02 },
+        params: { angle: 18, speed: 133, materialDensity: materialDensityFromMassAndDiameter(5.88, 0.121), temperature: 15, pressure: 1, diameter: 0.121, dt: 0.02, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/Canon_de_12_Gribeauval" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gribeauval_cannon_de_12_An_2_de_la_Republique.jpg" }
@@ -1273,7 +1329,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,451 yd at 5°",
         service: "Mexican-American War, early American Civil War",
         note: "This preset follows the historical comparison setup used in the validation snapshot: a 6-pound round shot at 5 degrees elevation and 1,450 ft/s. The repository does not include a dedicated M1841 image, so this entry uses a representative light field gun image.",
-        params: { angle: 5, speed: 1450 * 0.3048, materialDensity: materialDensityFromMassAndDiameter(2.72155, 0.093218), temperature: 15, pressure: 1, diameter: 0.093218, dt: 0.01 },
+        params: { angle: 5, speed: 1450 * 0.3048, materialDensity: materialDensityFromMassAndDiameter(2.72155, 0.093218), temperature: 15, pressure: 1, diameter: 0.093218, dt: 0.01, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://antietam.aotw.org/weapons.php?weapon_id=12" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:English_Saker_at_Fort_Nelson.jpg" }
@@ -1345,7 +1401,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "1,480 m at 5°",
         service: "American Civil War",
         note: "This is a smoothbore gun-howitzer. The preset keeps the round-shot drag model used elsewhere in the simulator.",
-        params: { angle: 12, speed: 439, materialDensity: materialDensityFromMassAndDiameter(5.44, 0.117), temperature: 15, pressure: 1, diameter: 0.117, dt: 0.012 },
+        params: { angle: 12, speed: 439, materialDensity: materialDensityFromMassAndDiameter(5.44, 0.117), temperature: 15, pressure: 1, diameter: 0.117, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/M1857_12-pounder_Napoleon" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Gettysburg,_12-pounder_Napoleon.jpg" }
@@ -1381,7 +1437,7 @@ HTML_PAGE = """<!DOCTYPE html>
         range: "Naval long-range battery class",
         service: "Age-of-Sail naval artillery",
         note: "The source identifies the gun class, caliber, and shot weight, but muzzle velocity varied by navy, barrel pattern, and powder charge. This preset uses a representative modeled launch speed for a heavy long gun rather than one universal historical firing table.",
-        params: { angle: 6, speed: 450, materialDensity: materialDensityFromMassAndDiameter(10.89, 0.1522), temperature: 15, pressure: 1, diameter: 0.1522, dt: 0.012 },
+        params: { angle: 6, speed: 450, materialDensity: materialDensityFromMassAndDiameter(10.89, 0.1522), temperature: 15, pressure: 1, diameter: 0.1522, dt: 0.012, projectileShape: "sphere", sphericity: 1, volumeFactor: 1, dragModel: "g7", ballisticCoefficient: 0 },
         sources: [
           { label: "Specs", url: "https://en.wikipedia.org/wiki/24-pounder_long_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Ca%C3%B1%C3%B3n_de_a_24_libras_en_Isla_Mancera,_Chile.jpg" }
@@ -1628,6 +1684,17 @@ HTML_PAGE = """<!DOCTYPE html>
       return Math.max(pressureAtm, MIN_PRESSURE);
     }
 
+    function updateCalculationStatus(label, tone) {
+      calcStatusEl.textContent = label;
+      calcStatusEl.classList.remove("busy", "ready", "blocked", "error");
+      calcStatusEl.classList.add(tone);
+      calcStatusEl.classList.add("visible");
+    }
+
+    function hideCalculationStatus() {
+      calcStatusEl.classList.remove("visible", "busy", "ready", "blocked", "error");
+    }
+
     function bootstrapRequired() {
       return !state.csrfToken;
     }
@@ -1669,6 +1736,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function recalculatePhysics() {
       if (bootstrapRequired()) {
+        updateCalculationStatus("Unlock simulator to calculate", "blocked");
         updateBootstrapGate();
         return false;
       }
@@ -1679,6 +1747,7 @@ HTML_PAGE = """<!DOCTYPE html>
       }
       const controller = new AbortController();
       state.requestController = controller;
+      updateCalculationStatus("Recalculating trajectory...", "busy");
 
       try {
         const response = await fetch("/api/simulate", {
@@ -1704,6 +1773,7 @@ HTML_PAGE = """<!DOCTYPE html>
         if (error.name === "AbortError") {
           return false;
         }
+        updateCalculationStatus("Trajectory update failed", "error");
         throw error;
       }
     }
@@ -1718,6 +1788,7 @@ HTML_PAGE = """<!DOCTYPE html>
       document.getElementById("hero-impact-reynolds").textContent = `${state.drag.aero.impactReynolds.toFixed(0)}`;
       renderMetrics();
       drawScene(1);
+      hideCalculationStatus();
     }
 
     async function recompute() {

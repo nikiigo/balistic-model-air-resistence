@@ -30,6 +30,15 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("state.presetModified = !paramsMatch(state.params, historicalGuns[state.currentGun].params);", HTML_PAGE)
         self.assertIn('historicalGuns[state.currentGun].name}${state.presetModified ? " custom" : ""}', HTML_PAGE)
 
+    def test_frontend_shows_recalculation_status(self) -> None:
+        self.assertIn('id="calcStatus"', HTML_PAGE)
+        self.assertIn('aria-live="polite"', HTML_PAGE)
+        self.assertIn('updateCalculationStatus("Recalculating trajectory...", "busy");', HTML_PAGE)
+        self.assertIn('updateCalculationStatus("Unlock simulator to calculate", "blocked");', HTML_PAGE)
+        self.assertIn('calcStatusEl.classList.add("visible");', HTML_PAGE)
+        self.assertIn("function hideCalculationStatus()", HTML_PAGE)
+        self.assertIn("hideCalculationStatus();", HTML_PAGE)
+
     def test_resize_redraws_without_rerunning_physics(self) -> None:
         self.assertIn("async function recalculatePhysics()", HTML_PAGE)
         self.assertIn("function redrawDisplay()", HTML_PAGE)
