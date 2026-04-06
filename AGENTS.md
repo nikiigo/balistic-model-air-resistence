@@ -51,6 +51,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Frontend historical launchers in [`ballistics/web/templates.py`](ballistics/web/templates.py) mirror the physics params and add presentation fields such as names, notes, images, and sources.
 - Keep preset families explicit in both places. Do not rely on inherited or partially merged state to imply sphere-vs-shell behavior.
 - When a preset changes, verify all of: backend params, frontend params, launcher hover copy, tests, and README references that mention the preset.
+- Launcher images are local assets under `assets/guns/`. The hover panel now uses a fixed `4:3` media frame in [`ballistics/web/templates.py`](ballistics/web/templates.py), so new images should be chosen or prepared to read well in that crop.
 
 ## Validation Snapshot
 
@@ -72,6 +73,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 - Authentication and browser session handling in [`ballistics/web/auth.py`](ballistics/web/auth.py) and [`ballistics/web/app.py`](ballistics/web/app.py) need careful review for trust boundaries. Browser sessions are stateless signed cookies, not server-stored sessions.
 - The frontend is embedded in one large HTML template. Small behavior changes can require both JS updates and contract-test updates.
+- The header quick-guide dialog is also defined inside [`ballistics/web/templates.py`](ballistics/web/templates.py). If its wording or sections change, update [`tests/test_frontend.py`](tests/test_frontend.py) in the same change.
 - The homepage default shot and the metric-card ordering under the graph are hardcoded in [`ballistics/web/templates.py`](ballistics/web/templates.py), not derived from backend presets automatically. The relevant places are the `defaults` object / initial state wiring and `renderMetrics()`.
 - The shell/sphere UI mode can regress if preset params are partial or merged carelessly. Preserve explicit `projectileShape`, shell BC params, and sphere zero-BC params when editing presets or selection logic.
 - The graph recalculation overlay is driven by `updateCalculationStatus()` inside `recalculatePhysics()` and hidden from `redrawDisplay()`. If the overlay behavior changes, update the frontend contract tests too.
