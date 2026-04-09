@@ -101,14 +101,10 @@ The drag solver is a numerical solver that integrates projectile motion through 
 
 The drag solver advances the trajectory with a classical fourth-order Runge-Kutta (RK4) integrator.
 
-### Two Drag Families
-
-The drag solver has two projectile families:
-
 - round shot
 - shell
 
-They share the same atmospheric state calculation, but they use different drag laws.
+These families share the same atmospheric state calculation and the same RK4 motion integrator, but they use different drag laws.
 
 #### Round-shot family
 
@@ -121,6 +117,15 @@ Round shot uses a sphere-based drag model grounded in two parts:
    that base coefficient is multiplied by a polynomial Mach correction
 
 In code, the round-shot family follows:
+
+`Cd_base(Re) = (24/Re) * (1 + A * Re^B) + (C * Re) / (D + Re)`
+
+with:
+
+- `A = 0.18624356`
+- `B = 0.6529`
+- `C = 0.43731566`
+- `D = 7185.3535`
 
 `Cd = Cd_base(Re) * (1 + Ma^2/4 + Ma^4/40)`
 
@@ -146,15 +151,27 @@ In this family:
 - Reynolds number and Mach number are computed and reported as diagnostics
 - the reported shell drag coefficient is an equivalent coefficient derived from the computed drag force, not a directly correlated sphere-style `Cd(Re, Ma)`
 
-In implementation terms, the shell path works like this:
+In implementation terms, the shell path uses:
 
-1. select the `G1` or `G7` speed band from the standard drag table
-2. compute retardation from that table and ballistic coefficient
-3. scale that retardation by the ratio of actual air density to standard air density
-4. convert the resulting drag acceleration into drag force with projectile mass
-5. back-compute an equivalent `Cd` from that drag force for reporting
+`R_std = (C * v_fps^n) / BC`
 
-So the shell family does not ignore atmosphere. It does not use the round-shot sphere `Cd(Re, Ma)` law as its primary aerodynamic model.
+where:
+
+- `C, n` come from the active row of the `G1` or `G7` drag table for the current velocity band
+- `v_fps` is projectile speed in feet per second
+- `BC` is ballistic coefficient
+
+That standard retardation is then density-scaled:
+
+`a_drag = R_std * (rho / rho_std) * FPS_TO_MPS`
+
+Drag force magnitude is then:
+
+`Fd = m * a_drag`
+
+The reported shell drag coefficient is back-computed afterward as an equivalent coefficient:
+
+`Cd_equivalent = 2 * Fd / (rho * A * v^2)`
 
 The UI defaults manual shell mode to:
 
