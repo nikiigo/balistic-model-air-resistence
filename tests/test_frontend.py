@@ -18,7 +18,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function syncMaterialDensityLimit(materialDensity)", HTML_PAGE)
         self.assertIn("controls.materialDensity.disabled = isShell;", HTML_PAGE)
         self.assertIn("controls.diameter.disabled = isShell;", HTML_PAGE)
+        self.assertIn("controls.ballisticCoefficient.disabled = !isShell;", HTML_PAGE)
         self.assertIn("Math.max(defaultMaterialDensityMax, roundedMax)", HTML_PAGE)
+
+    def test_shell_mode_exposes_manual_ballistic_coefficient_slider(self) -> None:
+        self.assertIn(".shape-control {\n      grid-row: span 2;", HTML_PAGE)
+        self.assertIn('<label class="shape-control">', HTML_PAGE)
+        self.assertIn('<span>bc</span><span class="value" data-out="ballisticCoefficient">0.22</span>', HTML_PAGE)
+        self.assertIn('id="ballisticCoefficient" type="range" min="0.12" max="1" step="0.01" value="0.22"', HTML_PAGE)
+        self.assertIn("ballisticCoefficient: (v) => Number(v).toFixed(2),", HTML_PAGE)
+        ballistic_coefficient_index = HTML_PAGE.index('id="ballisticCoefficient"')
+        time_step_index = HTML_PAGE.index('id="dt"')
+        self.assertLess(ballistic_coefficient_index, time_step_index)
 
     def test_plot_bounds_keep_at_least_the_requested_axes_but_do_not_clip_presets_by_default(self) -> None:
         self.assertIn("return state.stableBounds || state.focusedBounds || { maxX: 2400, maxY: 850 };", HTML_PAGE)
