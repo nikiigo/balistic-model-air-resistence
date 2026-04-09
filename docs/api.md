@@ -135,6 +135,8 @@ Notes:
 - `dragModel` is normalized to `g1` or `g7`
 - if `ballisticCoefficient` is omitted for shell payloads, the server falls back to the default shell BC
 - shell responses report the effective BC used by the solver
+- shell drag uses the same RK4 trajectory integrator as round shot, but with a different drag law
+- the `g1`/`g7` shell drag law is velocity-banded in the current implementation; the table lookup is keyed by projectile speed converted to `ft/s`, then density-scaled for actual atmospheric conditions
 
 ### Key Response Structure
 
