@@ -1701,6 +1701,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const isShell = state.params.projectileShape === "shell";
       shapeSphereBtn.classList.toggle("active", !isShell);
       shapeShellBtn.classList.toggle("active", isShell);
+      controls.materialDensity.disabled = isShell;
+      controls.diameter.disabled = isShell;
     }
 
     function syncMaterialDensityLimit(materialDensity) {
