@@ -67,6 +67,9 @@ Included presets cover:
 - 10-pounder Parrott rifle
 - 24-pounder long gun
 - Paixhans gun
+- Canon de 75 modele 1897
+- QF 18-pounder
+- 10.5 cm leFH 16
 
 The historical presets are educational approximations. Some launchers lack directly documented release velocity data, so the simulator uses either a spherical shot model or a simplified streamlined-projectile model depending on the preset.
 

@@ -1648,6 +1648,60 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           { label: "Specs", url: "https://en.wikipedia.org/wiki/24-pounder_long_gun" },
           { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Ca%C3%B1%C3%B3n_de_a_24_libras_en_Isla_Mancera,_Chile.jpg" }
         ]
+      },
+      french75: {
+        name: "Canon de 75 modele 1897",
+        subtitle: "France, 1897",
+        image: "/assets/guns/canon-de-75-modele-1897-mdla.jpg",
+        imageAlt: "Front view of a Canon de 75 modele 1897",
+        imagePosition: "center center",
+        diameterLabel: "75 mm",
+        projectile: "5.3 kg HE shell",
+        muzzleVelocity: "500 m/s",
+        range: "WWI quick-firing field gun",
+        service: "First World War field artillery",
+        note: "This preset uses the shell family with a representative WWI high-explosive round for the French 75. It is intended as an educational field-gun reference rather than a full firing-table reconstruction.",
+        params: historicalGunParams.french75,
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/Canon_de_75_mod%C3%A8le_1897" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Canon_de_75_front.jpg" }
+        ]
+      },
+      qf18Pounder: {
+        name: "QF 18-pounder",
+        subtitle: "United Kingdom, 1904",
+        image: "/assets/guns/qf-18-pounder-cwm-ottawa.jpg",
+        imageAlt: "Ordnance QF 18-pounder Field Gun Mk II in Halifax, Nova Scotia",
+        imagePosition: "center center",
+        diameterLabel: "84 mm",
+        projectile: "18.5 lb shell (8.4 kg)",
+        muzzleVelocity: "492 m/s",
+        range: "WWI British field gun",
+        service: "First World War field artillery",
+        note: "This preset represents the British quick-firing 18-pounder with a shell-family approximation suitable for comparing it against the French 75 and German light howitzers.",
+        params: historicalGunParams.qf18Pounder,
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/QF_18-pounder_gun" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:Ordnance_QF_18-pounder_Field_Gun_Mk_II,_Halifax,_Nova_Scotia_(12).JPG" }
+        ]
+      },
+      lefh16: {
+        name: "10.5 cm leFH 16",
+        subtitle: "German Empire, 1916",
+        image: "/assets/guns/10-5cm-lefh16-leftside1921.jpg",
+        imageAlt: "German First World War 10.5 cm leFH 16 in Quebec City",
+        imagePosition: "center center",
+        diameterLabel: "105 mm",
+        projectile: "14.81 kg HE shell",
+        muzzleVelocity: "395 m/s",
+        range: "WWI light field howitzer",
+        service: "First World War field artillery",
+        note: "This preset adds a WWI light howitzer profile to contrast with flatter field-gun trajectories. It uses the shell-family model with a representative high-explosive shell load.",
+        params: historicalGunParams.lefh16,
+        sources: [
+          { label: "Specs", url: "https://en.wikipedia.org/wiki/10.5_cm_leFH_16" },
+          { label: "Image", url: "https://commons.wikimedia.org/wiki/File:German_First_World_War_10.5_cm_leichte_Feldhaubitze_16_(10.5_cm_leFH_16),_(Serial_No._12826),_Quebec_City_(3).JPG" }
+        ]
       }
     };
 

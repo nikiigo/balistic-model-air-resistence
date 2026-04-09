@@ -117,6 +117,18 @@ class SimulationApiTests(unittest.TestCase):
         response = simulation_response({"currentGun": "m1841SixPounder"})
         self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["m1841SixPounder"])
 
+    def test_simulation_response_uses_historical_stable_bounds_for_french75(self) -> None:
+        response = simulation_response({"currentGun": "french75"})
+        self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["french75"])
+
+    def test_simulation_response_uses_historical_stable_bounds_for_qf18_pounder(self) -> None:
+        response = simulation_response({"currentGun": "qf18Pounder"})
+        self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["qf18Pounder"])
+
+    def test_simulation_response_uses_historical_stable_bounds_for_lefh16(self) -> None:
+        response = simulation_response({"currentGun": "lefh16"})
+        self.assertEqual(response["stableBounds"], HISTORICAL_GUN_PLOT_BOUNDS["lefh16"])
+
 
 class ServerHardeningTests(unittest.TestCase):
     @staticmethod

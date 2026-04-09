@@ -56,6 +56,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 - Keep preset families explicit in backend preset data. Do not rely on inherited or partially merged state in the frontend to imply sphere-vs-shell behavior.
 - When a preset changes, verify all of: backend params in [`ballistics/presets.py`](ballistics/presets.py), frontend launcher metadata in [`ballistics/web/templates.py`](ballistics/web/templates.py), launcher hover copy, tests, and README references that mention the preset.
 - Launcher images are local assets under `assets/guns/`. The hover panel now uses a fixed `4:3` media frame in [`ballistics/web/templates.py`](ballistics/web/templates.py), so new images should be chosen or prepared to read well in that crop.
+- The WWI artillery presets currently in the library are shell-family presets. Keep twentieth-century additions on the shell path unless there is a clear reason to model them as round shot.
 
 ## Validation Snapshot
 
