@@ -81,6 +81,7 @@ Interactive ballistics simulator for physics education. The Python server is the
 - The homepage default shot and the metric-card ordering under the graph are hardcoded in [`ballistics/web/templates.py`](ballistics/web/templates.py), not derived from backend presets automatically. The relevant places are the `defaults` object / initial state wiring and `renderMetrics()`.
 - The shell/sphere UI mode can regress if preset params are partial or merged carelessly. Preserve explicit `projectileShape`, shell BC params, and sphere zero-BC params when editing presets or selection logic.
 - In the current UI, shell mode locks the `materialDensity` and `diameter` controls because shell trajectory is driven by `G1/G7 + BC`; those controls only affect shell diagnostics in the current model.
+- The Launch Controls panel now exposes a manual `bc` slider for shell mode only. It sits above `Time step` in [`ballistics/web/templates.py`](ballistics/web/templates.py) and feeds `state.params.ballisticCoefficient` during manual shell setup.
 - The graph recalculation overlay is driven by `updateCalculationStatus()` inside `recalculatePhysics()` and hidden from `redrawDisplay()`. If the overlay behavior changes, update the frontend contract tests too.
 - Plot-bounds behavior is partly precomputed in [`ballistics/schemas.py`](ballistics/schemas.py); changes there can affect historical presets and graph scaling.
 

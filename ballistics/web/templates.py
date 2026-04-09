@@ -237,6 +237,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       align-content: start;
     }
 
+    .shape-control {
+      grid-row: span 2;
+    }
+
     .control-header {
       display: flex;
       justify-content: space-between;
@@ -1150,7 +1154,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span class="control-header"><span>Projectile diameter</span><span class="value" data-out="diameter">0.113 m</span></span>
               <input id="diameter" type="range" min="0.01" max="0.30" step="0.001" value="0.113">
             </label>
-            <label>
+            <label class="shape-control">
               <div class="shape-toggle">
                 <button type="button" class="shape-card active" id="shapeSphereBtn" aria-label="Round shot">
                   <svg class="shape-icon" viewBox="0 0 72 36" aria-hidden="true">
@@ -1167,6 +1171,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                   <span>Shell</span>
                 </button>
               </div>
+            </label>
+            <label>
+              <span class="control-header"><span>bc</span><span class="value" data-out="ballisticCoefficient">0.22</span></span>
+              <input id="ballisticCoefficient" type="range" min="0.12" max="1" step="0.01" value="0.22">
             </label>
             <label>
               <span class="control-header"><span>Time step</span><span class="value" data-out="dt">0.016 s</span></span>
@@ -1287,6 +1295,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       temperature: (v) => `${Number(v).toFixed(1)} °C`,
       pressure: (v) => `${Number(v) < 0.01 ? Number(v).toFixed(3) : Number(v).toFixed(2)} atm`,
       diameter: (v) => `${Number(v).toFixed(3)} m`,
+      ballisticCoefficient: (v) => Number(v).toFixed(2),
       dt: (v) => `${Number(v).toFixed(3)} s`,
     };
 
@@ -1323,6 +1332,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       temperature: document.getElementById("temperature"),
       pressure: document.getElementById("pressure"),
       diameter: document.getElementById("diameter"),
+      ballisticCoefficient: document.getElementById("ballisticCoefficient"),
       dt: document.getElementById("dt")
     };
     const shapeSphereBtn = document.getElementById("shapeSphereBtn");
@@ -1703,6 +1713,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       shapeShellBtn.classList.toggle("active", isShell);
       controls.materialDensity.disabled = isShell;
       controls.diameter.disabled = isShell;
+      controls.ballisticCoefficient.disabled = !isShell;
     }
 
     function syncMaterialDensityLimit(materialDensity) {
@@ -1726,6 +1737,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         temperature: Number(controls.temperature.value),
         pressure: clampPressure(Number(controls.pressure.value)),
         diameter: Number(controls.diameter.value),
+        ballisticCoefficient: Number(controls.ballisticCoefficient.value),
         dt: Number(controls.dt.value)
       };
     }
