@@ -146,6 +146,16 @@ In this family:
 - Reynolds number and Mach number are computed and reported as diagnostics
 - the reported shell drag coefficient is an equivalent coefficient derived from the computed drag force, not a directly correlated sphere-style `Cd(Re, Ma)`
 
+In implementation terms, the shell path works like this:
+
+1. select the `G1` or `G7` speed band from the standard drag table
+2. compute retardation from that table and ballistic coefficient
+3. scale that retardation by the ratio of actual air density to standard air density
+4. convert the resulting drag acceleration into drag force with projectile mass
+5. back-compute an equivalent `Cd` from that drag force for reporting
+
+So the shell family does not ignore atmosphere. It does not use the round-shot sphere `Cd(Re, Ma)` law as its primary aerodynamic model.
+
 The UI defaults manual shell mode to:
 
 - `dragModel: "g7"`
