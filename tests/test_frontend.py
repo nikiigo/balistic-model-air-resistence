@@ -16,6 +16,8 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_material_density_control_can_expand_for_dense_historic_presets(self) -> None:
         self.assertIn("function syncMaterialDensityLimit(materialDensity)", HTML_PAGE)
+        self.assertIn("controls.materialDensity.disabled = isShell;", HTML_PAGE)
+        self.assertIn("controls.diameter.disabled = isShell;", HTML_PAGE)
         self.assertIn("Math.max(defaultMaterialDensityMax, roundedMax)", HTML_PAGE)
 
     def test_plot_bounds_keep_at_least_the_requested_axes_but_do_not_clip_presets_by_default(self) -> None:
