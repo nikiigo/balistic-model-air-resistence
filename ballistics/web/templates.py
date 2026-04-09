@@ -1080,7 +1080,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </section>
           <section class="guide-section">
             <h3>Shell Model</h3>
-            <p>Shell projectiles use a G7 ballistic-coefficient model. It ignores actual atmospheric conditions and drag behavior.</p>
+            <p>Shell projectiles use a G7 ballistic-coefficient model with density-scaled drag. It does not use the round-shot sphere `Cd(Re, Ma)` law as the primary shell drag model.</p>
           </section>
         </div>
       </div>

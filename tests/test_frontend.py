@@ -90,7 +90,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("try to find the launch angle that gives the longest drag-limited range in a real atmosphere", HTML_PAGE)
         self.assertIn("Round Shot Model", HTML_PAGE)
         self.assertIn("Shell Model", HTML_PAGE)
-        self.assertIn("Shell projectiles use a G7 ballistic-coefficient model. It ignores actual atmospheric conditions and drag behavior.", HTML_PAGE)
+        self.assertIn("Shell projectiles use a G7 ballistic-coefficient model with density-scaled drag.", HTML_PAGE)
+        self.assertIn("It does not use the round-shot sphere `Cd(Re, Ma)` law as the primary shell drag model.", HTML_PAGE)
         self.assertIn("function openGuide()", HTML_PAGE)
         self.assertIn("function closeGuide()", HTML_PAGE)
 
