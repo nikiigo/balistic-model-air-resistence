@@ -40,7 +40,9 @@ Interactive ballistics simulator for physics education. The Python server is the
 
 - Round-shot spheres use the Haider-Levenspiel Reynolds-side base drag correlation plus the current polynomial Mach correction.
 - Shell-like projectiles use the `G1/G7 + ballistic coefficient` path rather than the sphere correlation.
+- Both drag families use the same RK4 trajectory integrator; what changes between them is the drag-law submodel used to compute acceleration inside each step.
 - Shell drag is driven by drag function (`G1`/`G7`) and ballistic coefficient. `sphericity` may be carried in preset metadata, but it is not an independent driver in the current shell drag law.
+- In the current shell implementation, the `G1/G7` lookup is velocity-banded in `ft/s` and then scaled by actual air density. Mach and Reynolds are still computed and reported for shell shots, but they are not the primary shell drag-law inputs.
 - Shell `dragCoefficient` values returned by the API are equivalent coefficients derived from drag force, not direct `Cd(Re, Ma)` correlation outputs.
 - Keep preset families explicit: round-shot presets should carry `projectileShape: "sphere"` with `sphericity = 1`, `volumeFactor = 1`, and `ballisticCoefficient = 0`, while shell presets should carry their shell-specific `volumeFactor`, `dragModel`, and positive `ballisticCoefficient`.
 - Pressure is clamped to the supported floor `MIN_PRESSURE_ATM = 0.001`.
