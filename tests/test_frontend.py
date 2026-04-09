@@ -53,6 +53,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("const historicalGunParams = ", HTML_PAGE)
         self.assertIn("params: historicalGunParams.ballista", HTML_PAGE)
         self.assertIn("params: historicalGunParams.napoleon", HTML_PAGE)
+        self.assertIn("params: historicalGunParams.french75", HTML_PAGE)
+        self.assertIn("params: historicalGunParams.qf18Pounder", HTML_PAGE)
+        self.assertIn("params: historicalGunParams.lefh16", HTML_PAGE)
 
     def test_ballista_and_mangonel_use_updated_local_images(self) -> None:
         self.assertIn('/assets/guns/roman-ballista-alesia.jpg', HTML_PAGE)
@@ -166,3 +169,6 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Mangonel / traction catapult", HTML_PAGE)
         self.assertIn("Ballista", HTML_PAGE)
         self.assertIn("M1841 6-pounder gun", HTML_PAGE)
+        self.assertIn("Canon de 75 modele 1897", HTML_PAGE)
+        self.assertIn("QF 18-pounder", HTML_PAGE)
+        self.assertIn("10.5 cm leFH 16", HTML_PAGE)
